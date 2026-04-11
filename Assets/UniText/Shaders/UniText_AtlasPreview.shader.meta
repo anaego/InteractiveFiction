@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: f64dffcf78502194eacd1a2731c7542b
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Shaders/UniText_AtlasPreview.shader
+  uploadId: 895842

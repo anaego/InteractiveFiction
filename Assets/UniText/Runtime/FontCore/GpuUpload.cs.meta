@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: e23d8148d42b98546ae1c9feabfa6e9e
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/FontCore/GpuUpload.cs
+  uploadId: 895842

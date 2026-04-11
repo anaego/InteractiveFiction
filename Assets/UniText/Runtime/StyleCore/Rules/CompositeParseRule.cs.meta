@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 7c94c9a46ad94c142b95e2ef4e44cd36
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Rules/CompositeParseRule.cs
+  uploadId: 895842

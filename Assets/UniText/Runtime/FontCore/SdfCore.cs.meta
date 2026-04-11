@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 52908b5c055350947a857bd54a4b7059
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/FontCore/SdfCore.cs
+  uploadId: 895842

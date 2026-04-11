@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: bdb3d6b915f6b8747aa418bc6751d680
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/FontExamples/Fonts/FontFamily_VariableFont/static/NotoSans-Regular.asset
+  uploadId: 895842

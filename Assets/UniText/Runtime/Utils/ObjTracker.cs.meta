@@ -1,0 +1,10 @@
+fileFormatVersion: 2
+guid: 6e028af09da0483a9c9dd4fa288fb209
+timeCreated: 1767706635
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Utils/ObjTracker.cs
+  uploadId: 895842

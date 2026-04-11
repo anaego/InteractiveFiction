@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 25571032a92321f4997329d90f499d06
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Defaults/UniTextGradients.asset
+  uploadId: 895842

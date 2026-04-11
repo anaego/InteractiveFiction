@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 680997e5d69b30545bfd3007b47d3e58
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/AttributeSpan.cs
+  uploadId: 895842

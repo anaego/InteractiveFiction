@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: dbd3985f1e0ab86489d30fc253fd4f0a
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/FontCore/MipmapGenerator.cs
+  uploadId: 895842

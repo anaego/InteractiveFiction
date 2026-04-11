@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 80606eb46c3342e438defbe3d3e5a938
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/FontExamples/Fonts/Languages/NotoSansMyanmar-Regular.asset
+  uploadId: 895842

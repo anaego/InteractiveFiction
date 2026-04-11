@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 19760ae53cf5b3344ba341539c8a7e5a
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/Modifiers/Modifiers.unity
+  uploadId: 895842

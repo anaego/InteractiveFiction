@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: f672eede22fc8a24ab5dbe3938790a25
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Core/Component/EventSystemBootstrap.cs
+  uploadId: 895842

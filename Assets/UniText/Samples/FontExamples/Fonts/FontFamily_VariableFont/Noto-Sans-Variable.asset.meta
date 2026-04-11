@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: e35d2e14933057b418bda9cf4e1551b9
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/FontExamples/Fonts/FontFamily_VariableFont/Noto-Sans-Variable.asset
+  uploadId: 895842

@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: e78ce0317d04a254a82c984b9790c9ed
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Attributes/ParameterFieldAttribute.cs
+  uploadId: 895842

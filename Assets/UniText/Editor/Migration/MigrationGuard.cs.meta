@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: bc5989d4712cc2443a6ccec51f9029e4
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/Migration/MigrationGuard.cs
+  uploadId: 895842

@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 26e43b59d179a0841a04366d156e71cd
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/ItalicModifier.cs
+  uploadId: 895842

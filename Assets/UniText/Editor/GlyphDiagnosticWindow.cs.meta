@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: b565086f9c0b71a46b541d1ef09016ac
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/GlyphDiagnosticWindow.cs
+  uploadId: 895842

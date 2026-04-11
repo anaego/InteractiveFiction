@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: f9b19e0c42195b74c9c274d4165684fe
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/Migration/MigrationMapping.cs
+  uploadId: 895842

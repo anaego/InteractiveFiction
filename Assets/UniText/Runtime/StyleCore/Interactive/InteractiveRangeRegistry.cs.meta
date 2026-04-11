@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 9cc0f84a1a8288540aba92fa586c72fa
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Interactive/InteractiveRangeRegistry.cs
+  uploadId: 895842

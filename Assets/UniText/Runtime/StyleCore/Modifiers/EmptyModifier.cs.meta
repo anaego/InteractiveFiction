@@ -1,0 +1,10 @@
+fileFormatVersion: 2
+guid: 8644b7f6491b42be8c0bfd9884ac2b56
+timeCreated: 1766711086
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/EmptyModifier.cs
+  uploadId: 895842

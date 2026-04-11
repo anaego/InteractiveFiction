@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: fa7fa2deceeb2654aa624e23d7b58a05
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/UniTextToolsWindow.cs
+  uploadId: 895842

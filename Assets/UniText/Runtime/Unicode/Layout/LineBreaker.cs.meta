@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: cb57cd3a34cb1f341bd094b61f5d6ede
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Unicode/Layout/LineBreaker.cs
+  uploadId: 895842

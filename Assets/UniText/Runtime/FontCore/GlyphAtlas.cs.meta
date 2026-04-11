@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: d7af523adcbf84f4dabf3efe370f17ce
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/FontCore/GlyphAtlas.cs
+  uploadId: 895842

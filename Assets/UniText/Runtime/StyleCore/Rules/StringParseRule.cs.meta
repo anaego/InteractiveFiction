@@ -1,0 +1,10 @@
+fileFormatVersion: 2
+guid: bed69a3006d74b88a44f9bbc783876da
+timeCreated: 1766708329
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Rules/StringParseRule.cs
+  uploadId: 895842

@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 5fbe3da68e501654aa5a1608300ec39e
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Attributes/TypeSelectorAttribute.cs
+  uploadId: 895842

@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: bc5046284f82418fa80ef6ff7ad138d7
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Core/Component/UniTextBase_Parallel.cs
+  uploadId: 895842

@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: a301dd3944d9c254585325fe0b8854e7
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/EllipsisModifier.cs
+  uploadId: 895842

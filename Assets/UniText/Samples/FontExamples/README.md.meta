@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 24cfa66c22487dc4698258ce321d036b
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/FontExamples/README.md
+  uploadId: 895842

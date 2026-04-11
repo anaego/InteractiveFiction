@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: de7750c93b7064b4c81d0f2d1e0af5d5
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/LineHeightModifier.cs
+  uploadId: 895842

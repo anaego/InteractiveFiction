@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 6f8c8007a764cc94f96cbaf88b8a319c
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/AttributeParser.cs
+  uploadId: 895842

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 6194ba5d5fd7d3a4dad0e98490db58e6
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/tools~/UniTextDocGen/UniTextDocGen.csproj
+  uploadId: 895842

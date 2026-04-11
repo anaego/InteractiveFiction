@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: aae84ffaaa04d41439a72608b02f5cdb
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/LetterSpacingModifier.cs
+  uploadId: 895842

@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 6a9fc4fadb1fb59469de90cdf8b8e48f
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/ColorParsing.cs
+  uploadId: 895842

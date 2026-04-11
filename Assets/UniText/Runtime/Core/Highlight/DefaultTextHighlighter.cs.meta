@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 98d1867a826ad0940afb2a76aebd8f07
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Core/Highlight/DefaultTextHighlighter.cs
+  uploadId: 895842

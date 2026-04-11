@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 4feaaee12f5599a4eb1330633f7735bb
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/CompositeModifier.cs
+  uploadId: 895842

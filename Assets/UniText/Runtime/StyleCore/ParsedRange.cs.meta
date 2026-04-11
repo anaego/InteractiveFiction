@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 36f762460505eeb4da397d1072da43b2
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/ParsedRange.cs
+  uploadId: 895842

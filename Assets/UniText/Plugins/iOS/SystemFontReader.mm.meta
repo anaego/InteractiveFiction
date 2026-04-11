@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 8f3c2a1b5d4e6f7890abcdef12345678
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Plugins/iOS/SystemFontReader.mm
+  uploadId: 895842

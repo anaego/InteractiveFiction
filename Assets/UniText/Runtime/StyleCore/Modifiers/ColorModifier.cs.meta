@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: aebf25eb3d8486f4aae483603518f019
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/ColorModifier.cs
+  uploadId: 895842

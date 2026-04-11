@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 65a26393eb31fa54cb0f72fe4613aab5
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/FontExamples/Fonts/FontFamily_VariableFont/static/NotoSans-ThinItalic.asset
+  uploadId: 895842

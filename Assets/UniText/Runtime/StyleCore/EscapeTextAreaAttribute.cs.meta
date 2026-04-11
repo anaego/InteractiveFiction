@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 5bf1e31d47d95594eb76e26f490780f6
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/EscapeTextAreaAttribute.cs
+  uploadId: 895842

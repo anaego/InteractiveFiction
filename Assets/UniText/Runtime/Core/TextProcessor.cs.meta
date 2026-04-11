@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: df6152be064e1774ea040e6246de24f3
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Core/TextProcessor.cs
+  uploadId: 895842

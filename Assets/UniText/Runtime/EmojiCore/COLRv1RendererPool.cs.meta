@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: acf1fccb76312494faed7047abc4975b
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/EmojiCore/COLRv1RendererPool.cs
+  uploadId: 895842

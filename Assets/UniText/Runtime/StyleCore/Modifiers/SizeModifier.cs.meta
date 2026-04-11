@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 8a85b661f294d564db77c119dd242331
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/SizeModifier.cs
+  uploadId: 895842

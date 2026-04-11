@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 16e09c74ce37ba94995d25fc428a2a02
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/UniTextSettingsEditor.cs
+  uploadId: 895842

@@ -1,0 +1,10 @@
+fileFormatVersion: 2
+guid: a2d3660aec554a17b5c6694db2ba9c0d
+timeCreated: 1764750494
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Unicode/BidiEngine.cs
+  uploadId: 895842

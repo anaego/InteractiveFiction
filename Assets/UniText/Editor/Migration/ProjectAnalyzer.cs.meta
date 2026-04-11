@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 124e95389ae3b4548a7ce7447117b113
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/Migration/ProjectAnalyzer.cs
+  uploadId: 895842

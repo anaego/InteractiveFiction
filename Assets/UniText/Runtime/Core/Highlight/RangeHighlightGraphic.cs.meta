@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 4e4ec51a6b9149d4ebe96b0ba9d2c601
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Core/Highlight/RangeHighlightGraphic.cs
+  uploadId: 895842

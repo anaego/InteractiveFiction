@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 68ec4a6f35c480e4cb34b8f56a6ef028
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/FontExamples/Fonts/DancingScript-Regular Fonts.asset
+  uploadId: 895842

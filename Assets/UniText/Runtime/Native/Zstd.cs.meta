@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 7ed36d80ce083df40a6f19d1cdfb5a53
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Native/Zstd.cs
+  uploadId: 895842

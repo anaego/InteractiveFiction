@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: f7a85aca2c6817446a7de8e2b9843932
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/DefaultParameterDrawer.cs
+  uploadId: 895842

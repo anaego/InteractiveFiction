@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: f466c85dca2b4a58a62ac0e1a60c3d1a
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/UniTextBaseEditor.cs
+  uploadId: 895842

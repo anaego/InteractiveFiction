@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: bf2c5c13e091cd1478bc538a25b60428
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Core/UniTextMaterialCache.cs
+  uploadId: 895842

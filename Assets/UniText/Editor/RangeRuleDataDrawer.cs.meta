@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: dbd82be58fa1c1442a5d8bdb3fe5dd65
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/RangeRuleDataDrawer.cs
+  uploadId: 895842

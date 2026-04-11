@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 9b94e1ebd66d9f5468022812fb415b80
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/UniTextDefaultsGuard.cs
+  uploadId: 895842

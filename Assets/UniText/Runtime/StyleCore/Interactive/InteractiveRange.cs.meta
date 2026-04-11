@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: f382f490c3a70da4ca898cd58aad8a0b
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Interactive/InteractiveRange.cs
+  uploadId: 895842

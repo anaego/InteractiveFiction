@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 48c1ac2d38356ef4691c19115a23bb26
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/FontExamples/Fonts/Lobster-Regular Fonts.asset
+  uploadId: 895842

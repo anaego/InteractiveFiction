@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 03c2ae86016d38f4d8d148088014280a
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/AttributeKeys.cs
+  uploadId: 895842

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 93547b1ce6da2874e93fe6698c99fbda
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/FontExamples/Fonts/NotoSerif-Regular.asset
+  uploadId: 895842

@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: dcf8d1a1bd23181489acfd13d2fb55ae
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/ListModifier.cs
+  uploadId: 895842

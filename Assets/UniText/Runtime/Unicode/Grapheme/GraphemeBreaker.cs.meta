@@ -1,0 +1,10 @@
+fileFormatVersion: 2
+guid: 6e9549774098494893cbfa6b15453cf2
+timeCreated: 1764945052
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Unicode/Grapheme/GraphemeBreaker.cs
+  uploadId: 895842

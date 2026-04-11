@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 4aacb65a583bb8740af5c0038f7f5816
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/TypeSelectorDrawer.cs
+  uploadId: 895842

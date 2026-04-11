@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 64955ab0189d9c84ea058a809e70ff83
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/Emoji/README.md
+  uploadId: 895842

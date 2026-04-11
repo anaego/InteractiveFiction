@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 565c5ae1c8a9789479db45bb9e40d588
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/FontExamples/Fonts/FontFamily_VariableFont/static/NotoSans-LightItalic.asset
+  uploadId: 895842

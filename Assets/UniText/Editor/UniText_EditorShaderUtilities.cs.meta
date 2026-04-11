@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: dd6bb2c09a7648d409eaa93a4a657af7
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/UniText_EditorShaderUtilities.cs
+  uploadId: 895842

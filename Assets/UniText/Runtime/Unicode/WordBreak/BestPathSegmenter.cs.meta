@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 20655b4dd19e112469cd119a0916ea9c
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Unicode/WordBreak/BestPathSegmenter.cs
+  uploadId: 895842

@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: b870879559d0da440a2eb90a5504f8c3
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/VariationModifier.cs
+  uploadId: 895842

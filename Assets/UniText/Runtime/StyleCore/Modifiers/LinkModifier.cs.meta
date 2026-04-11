@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 478010bb9c4cb6a478425e0a067b68d7
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/LinkModifier.cs
+  uploadId: 895842

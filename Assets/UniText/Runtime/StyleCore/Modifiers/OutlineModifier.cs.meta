@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 776c375a38086bd458d98d6f32ef1fa9
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/OutlineModifier.cs
+  uploadId: 895842

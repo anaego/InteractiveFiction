@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: a8e74702a847da444891c14511456b82
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/FontCore/EdgeColoring.cs
+  uploadId: 895842

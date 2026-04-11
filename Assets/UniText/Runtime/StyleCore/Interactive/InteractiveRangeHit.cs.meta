@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: ff0582a1945c12b4290fadbbf28cc7d5
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Interactive/InteractiveRangeHit.cs
+  uploadId: 895842

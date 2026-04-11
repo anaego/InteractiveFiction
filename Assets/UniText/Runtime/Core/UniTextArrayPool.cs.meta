@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: c1a73495399234141895002a17945391
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Core/UniTextArrayPool.cs
+  uploadId: 895842

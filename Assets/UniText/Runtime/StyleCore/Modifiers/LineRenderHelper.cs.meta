@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: ae036061a68e1e94995f7f3634a570b8
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/LineRenderHelper.cs
+  uploadId: 895842

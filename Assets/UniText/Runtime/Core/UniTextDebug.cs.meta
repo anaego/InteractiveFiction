@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: b8f4a11222ce11043ac3a8becbe60c3e
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Core/UniTextDebug.cs
+  uploadId: 895842

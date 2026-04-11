@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: d84f81d54b5cfa64a89e3d26aa1007b9
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/Core/TextStructures.cs
+  uploadId: 895842

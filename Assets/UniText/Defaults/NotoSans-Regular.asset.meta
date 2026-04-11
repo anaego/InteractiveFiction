@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: fa6a69a3b81441c4f93cffec1385d8b2
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Defaults/NotoSans-Regular.asset
+  uploadId: 895842

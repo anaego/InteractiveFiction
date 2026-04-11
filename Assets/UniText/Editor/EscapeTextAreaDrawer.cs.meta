@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 86344bba51549c545a79f545b3eebd4f
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Editor/EscapeTextAreaDrawer.cs
+  uploadId: 895842

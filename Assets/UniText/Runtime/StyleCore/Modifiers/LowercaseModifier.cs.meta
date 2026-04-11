@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 328249fc7eb7a414290009fbad611597
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/LowercaseModifier.cs
+  uploadId: 895842

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: f5e7cc241616d0c48956fa5714758d7e
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Samples/FontExamples/Fonts/FontFamily_VariableFont/static/NotoSans-Medium.asset
+  uploadId: 895842

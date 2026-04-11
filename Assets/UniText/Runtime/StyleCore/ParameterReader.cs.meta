@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: f9cf66ae3dc66bb4b862121c34c1fd79
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.0.0
+  assetPath: Assets/UniText/Runtime/StyleCore/ParameterReader.cs
+  uploadId: 895842
