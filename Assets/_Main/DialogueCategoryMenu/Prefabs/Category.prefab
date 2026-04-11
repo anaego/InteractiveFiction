@@ -283,8 +283,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 6787961633711865826}
+  - component: {fileID: 4028360826956256872}
+  - component: {fileID: 6257508852355705323}
   m_Layer: 5
-  m_Name: Text (TMP)
+  m_Name: Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -309,6 +311,76 @@ RectTransform:
   m_AnchoredPosition: {x: 66, y: -102}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!222 &4028360826956256872
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7119863680560695923}
+  m_CullTransparentMesh: 1
+--- !u!114 &6257508852355705323
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7119863680560695923}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: beaa34cb0e58d624bb3a264b28600785, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: LightSide.UniText::LightSide.UniText
+  m_Material: {fileID: 0}
+  m_Color: {r: 0, g: 0, b: 0, a: 1}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  text: 
+  fontStack: {fileID: 11400000, guid: 72f6e3edfbc82804791ebe8e4814fa46, type: 2}
+  fontSize: 42
+  baseDirection: 2
+  wordWrap: 1
+  horizontalAlignment: 1
+  verticalAlignment: 0
+  overEdge: 0
+  underEdge: 0
+  leadingDistribution: 0
+  autoSize: 0
+  minFontSize: 10
+  maxFontSize: 72
+  styles:
+    items:
+    - modifier:
+        rid: 3918862016986480863
+      rule:
+        rid: 3918862016986480864
+  stylePresets:
+    items: []
+  renderMode: 0
+  highlighter:
+    rid: 3918862016986480847
+  references:
+    version: 2
+    RefIds:
+    - rid: 3918862016986480847
+      type: {class: DefaultTextHighlighter, ns: LightSide, asm: LightSide.UniText}
+      data:
+        clickColor: {r: 0.2, g: 0.5, b: 1, a: 0.6}
+        fadeDuration: 0.25
+        hoverColor: {r: 0.2, g: 0.5, b: 1, a: 0.1}
+    - rid: 3918862016986480863
+      type: {class: ItalicModifier, ns: LightSide, asm: LightSide.UniText}
+      data: 
+    - rid: 3918862016986480864
+      type: {class: RangeRule, ns: LightSide, asm: LightSide.UniText}
+      data:
+        data:
+        - range: ..
+          parameter: 
 --- !u!1 &9163021132653480512
 GameObject:
   m_ObjectHideFlags: 0
