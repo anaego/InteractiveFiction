@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace SceneInitialization
 {
-    [CreateAssetMenu(menuName = "ScriptableObjects/SceneInitializationConfig", fileName = "SceneInitializationConfig")]
+    [CreateAssetMenu(menuName = "Scriptable Objects/SceneInitializationConfig", fileName = "SceneInitializationConfig")]
     public class SceneInitializationConfig : ScriptableObject
     {
         [field: SerializeField] public string MenuSceneName = "MenuScene";
