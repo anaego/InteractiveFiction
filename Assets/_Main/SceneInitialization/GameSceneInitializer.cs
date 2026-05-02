@@ -10,10 +10,9 @@ namespace SceneInitialization
         // [SerializeField] private DialogueConfig _dialogueConfig;
         // [SerializeField] private DialogueStarterView[] _dialogueStarterViews;
 
-        private void Start()
+        private void Awake()
         {
             InitializeSceneNavigation();
-            // InitializeDialogueControllers();
         }
 
         void InitializeSceneNavigation()
@@ -22,15 +21,15 @@ namespace SceneInitialization
             sceneNavigationController.InitializeView();
         }
 
-        // void InitializeDialogueControllers()
-        // {
-        //     var dialogueStarterControllers = new DialogueStarterController[_dialogueStarterViews.Length];
-        //     for (var index = 0; index < _dialogueStarterViews.Length; index++)
-        //     {
-        //         var dialogueStarterView = _dialogueStarterViews[index];
-        //         dialogueStarterControllers[index] = new DialogueStarterController(dialogueStarterView);
-        //     }
-        //     var dialogueController = new DialogueController(_dialogueView, _dialogueConfig, dialogueStarterControllers);
-        // }
+        void InitializeDialogueControllers()
+        {
+            //     var dialogueStarterControllers = new DialogueStarterController[_dialogueStarterViews.Length];
+            //     for (var index = 0; index < _dialogueStarterViews.Length; index++)
+            //     {
+            //         var dialogueStarterView = _dialogueStarterViews[index];
+            //         dialogueStarterControllers[index] = new DialogueStarterController(dialogueStarterView);
+            //     }
+            //     var dialogueController = new DialogueController(_dialogueView, _dialogueConfig, dialogueStarterControllers);
+        }
     }
 }
