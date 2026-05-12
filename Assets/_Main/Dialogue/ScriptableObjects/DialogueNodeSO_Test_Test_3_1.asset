@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: df0d49b0e017a444aa8ce10aac6a5055, type: 3}
-  m_Name: DialogueNodeSO_Test_Test_1
+  m_Name: DialogueNodeSO_Test_Test_3_1
   m_EditorClassIdentifier: Assembly-CSharp::Dialogue.DialogueNodeSO
-  <Text>k__BackingField: Test text! Hello <3
-  <Condition>k__BackingField: 0
+  <Text>k__BackingField: Choice 1
+  <Condition>k__BackingField: 1
   <NextNodes>k__BackingField:
-  - {fileID: 11400000, guid: e9f43dee68feba845b9cf64ba011bb30, type: 2}
+  - {fileID: 11400000, guid: f769ea31b1722e449be8d4cdee61e583, type: 2}

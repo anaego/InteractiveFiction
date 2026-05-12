@@ -11,6 +11,8 @@ namespace DialogueMenu
         [SerializeField] private DialogueMenuItemView _dialogueMenuItemPrefab;
         [SerializeField] private Transform _dialogueMenuItemContainer;
         
+        private List<DialogueMenuItemView> _currentMenuItems = new();
+        
         public List<DialogueMenuMapItem> SetupDialogueList(DialogueMenuItemSO[] dialogues)
         {
             var dialogueMenuItemViewDataMap = new List<DialogueMenuMapItem>();
@@ -19,8 +21,18 @@ namespace DialogueMenu
                 var dialogueMenuItem = Instantiate(_dialogueMenuItemPrefab, _dialogueMenuItemContainer);
                 dialogueMenuItem.Setup(dialogue);
                 dialogueMenuItemViewDataMap.Add(new DialogueMenuMapItem(dialogue, dialogueMenuItem));
+                _currentMenuItems.Add(dialogueMenuItem);
             }
             return dialogueMenuItemViewDataMap;
+        }
+
+        public void Reset()
+        {
+            foreach (var dialogueMenuItemView in _currentMenuItems)
+            {
+                Destroy(dialogueMenuItemView.gameObject);
+            }
+            _currentMenuItems.Clear();
         }
     }
 }

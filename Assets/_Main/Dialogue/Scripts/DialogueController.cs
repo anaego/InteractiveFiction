@@ -9,10 +9,9 @@ namespace Dialogue
             _view = dialogueView;
         }
         
-        public void OpenDialogue(DialogueSO data)
+        public void SetupDialogue(DialogueSO data)
         {
             _view.Setup(data);
-            _view.Container.SetActive(true);
         }
     }
 }

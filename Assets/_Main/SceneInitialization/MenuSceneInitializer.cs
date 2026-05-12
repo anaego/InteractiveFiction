@@ -2,6 +2,7 @@ using Dialogue;
 using DialogueCategory;
 using DialogueMenu;
 using SceneNavigation;
+using ScreenNavigation;
 using UnityEngine;
 
 namespace SceneInitialization
@@ -10,13 +11,20 @@ namespace SceneInitialization
     {
         [SerializeField] private SceneNavigationView _sceneNavigationView;
         [SerializeField] private DialogueCategoryMappingItem[] _dialogueCategoryMap;
+        // TODO: to separate view?
         [SerializeField] private DialogueMenuView _dialogueMenuView;
         [SerializeField] private DialogueView _dialogueView;
+        [SerializeField] private ScreenNavigationView _homeScreen;
+        [SerializeField] private ScreenNavigationView _dialogueMenuScreen;
+        [SerializeField] private ScreenNavigationView _dialogueScreen;
+
+        private ScreenNavigationController _screenNavigationController;
 
         void Awake()
         {
             var sceneNavigationController = new SceneNavigationController(_sceneNavigationView);
-            sceneNavigationController.InitializeView();
+            _screenNavigationController = new ScreenNavigationController(_homeScreen);
+            sceneNavigationController.InitializeView(); // TODO: call inside system?
             InitializeDialogueControllers();
         }
         
@@ -28,7 +36,8 @@ namespace SceneInitialization
             {
                 var dialogueCategory = _dialogueCategoryMap[index];
                 dialogueStarterControllers[index] = new DialogueCategoryController(
-                    dialogueCategory, _dialogueMenuView, dialogueController);
+                    dialogueCategory, _dialogueMenuView, dialogueController, 
+                    _screenNavigationController, _dialogueMenuScreen, _dialogueScreen);
             }
         }
     }

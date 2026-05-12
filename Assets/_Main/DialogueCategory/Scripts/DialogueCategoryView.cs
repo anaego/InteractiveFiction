@@ -10,17 +10,17 @@ namespace DialogueCategory
     {
         // TODO: public?
         [field: SerializeField] public Button Button { get; private set; }
-        
-        public void CloseDialogueMenu(GameObject dialogueMenuContainer)
-        {
-            dialogueMenuContainer.SetActive(false);
-        }
 
-        public List<DialogueMenuMapItem> OpenDialogueMenu(
+        // TODO: remove
+        // public void CloseDialogueMenu(GameObject dialogueMenuContainer)
+        // {
+        //     dialogueMenuContainer.SetActive(false);
+        // }
+
+        public List<DialogueMenuMapItem> SetupDialogueMenu(
             DialogueMenuItemSO[] dialogueMenuItems, DialogueMenuView dialogueMenuView)
         {
             var dialogueMenuMap = dialogueMenuView.SetupDialogueList(dialogueMenuItems);
-            dialogueMenuView.Container.SetActive(true);
             return dialogueMenuMap;
         }
     }
