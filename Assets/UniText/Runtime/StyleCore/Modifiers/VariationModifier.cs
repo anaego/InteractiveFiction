@@ -28,13 +28,11 @@ namespace LightSide
     {
         internal const int AxisCount = 5;
 
-        /// <summary>Axis tags in positional order.</summary>
         internal static readonly uint[] axisTags =
         {
             0x77676874, 0x77647468, 0x6974616C, 0x736C6E74, 0x6F70737A,
         };
 
-        /// <summary>Bitmask flags for each axis position.</summary>
         [Flags]
         internal enum AxisMask : byte
         {
@@ -46,7 +44,6 @@ namespace LightSide
             Opsz = 1 << 4,
         }
 
-        /// <summary>How an axis value is specified.</summary>
         internal enum ValueMode : byte
         {
             Absolute,
@@ -54,7 +51,6 @@ namespace LightSide
             Delta,
         }
 
-        /// <summary>Single axis value with its mode.</summary>
         [StructLayout(LayoutKind.Sequential)]
         internal struct AxisValue
         {

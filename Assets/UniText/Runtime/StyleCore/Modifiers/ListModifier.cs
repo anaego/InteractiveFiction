@@ -140,8 +140,10 @@ namespace LightSide
             var scaledIndent = indentPerLevel * fontSize;
             var contentIndent = item.nestingLevel * scaledIndent + MeasureMarkerWidthForLayout(item);
 
-            if (item.end > buf.startMargins.Capacity) buf.EnsureCodepointCapacity(item.end);
+            buf.PrepareStartMargins();
             var margins = buf.startMargins.data;
+            if (margins == null) return;
+
             var safeEnd = Math.Min(item.end, buf.codepoints.count);
             for (var i = item.start; i < safeEnd; i++)
                 if (contentIndent > margins[i])
@@ -159,19 +161,33 @@ namespace LightSide
         private void InjectMarkerForItem(ListItemInfo item)
         {
             var isRtl = IsItemRtl(item.start);
-
-            float firstGlyphX = 0, baselineY = 0;
-            var found = false;
             var buf = buffers;
+
+            var lineStart = item.start;
+            var lineEnd = item.end;
+            for (var i = 0; i < buf.lines.count; i++)
+            {
+                ref readonly var line = ref buf.lines[i];
+                var lStart = line.range.start;
+                var lEnd = lStart + line.range.length;
+                if (item.start < lStart || item.start >= lEnd) continue;
+                lineStart = lStart;
+                lineEnd = Math.Min(lEnd, item.end);
+                break;
+            }
+
+            var leftmostX = float.PositiveInfinity;
+            var rightmostX = float.NegativeInfinity;
+            float baselineY = 0;
+            var found = false;
             for (var i = 0; i < buf.positionedGlyphs.count; i++)
             {
-                if (buf.positionedGlyphs[i].cluster >= item.start)
-                {
-                    firstGlyphX = buf.positionedGlyphs[i].x;
-                    baselineY = buf.positionedGlyphs[i].y;
-                    found = true;
-                    break;
-                }
+                ref readonly var g = ref buf.positionedGlyphs.data[i];
+                if (g.cluster < lineStart || g.cluster >= lineEnd) continue;
+
+                if (g.left < leftmostX) leftmostX = g.left;
+                if (g.right > rightmostX) rightmostX = g.right;
+                if (!found) { baselineY = g.y; found = true; }
             }
             if (!found) return;
 
@@ -215,16 +231,7 @@ namespace LightSide
                 }
             }
 
-            float offsetX;
-            if (isRtl)
-            {
-                var glyphScale = buf.GetGlyphScale(fontSize);
-                offsetX = firstGlyphX + GetLineWidth(item.start) * glyphScale;
-            }
-            else
-            {
-                offsetX = firstGlyphX - curX;
-            }
+            var offsetX = isRtl ? rightmostX : leftmostX - curX;
 
             var injectedEnd = buf.virtualPositionedGlyphs.count;
             var data = buf.virtualPositionedGlyphs.data;
@@ -263,20 +270,6 @@ namespace LightSide
             if (dir == TextDirection.RightToLeft) return true;
             var levels = buffers.bidiLevels.data;
             return (uint)cluster < (uint)levels.Length && (levels[cluster] & 1) == 1;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private float GetLineWidth(int cluster)
-        {
-            var buf = buffers;
-            for (var i = 0; i < buf.lines.count; i++)
-            {
-                ref readonly var line = ref buf.lines[i];
-                if (cluster >= line.range.start && cluster < line.range.start + line.range.length)
-                    return line.width + line.trailingWhitespace;
-            }
-
-            return 0f;
         }
 
         private static void AppendOrderedNumber(StringBuilder sb, int n, OrderedMarkerStyle style)

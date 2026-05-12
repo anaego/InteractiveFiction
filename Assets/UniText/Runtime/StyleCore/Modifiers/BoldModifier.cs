@@ -77,7 +77,7 @@ namespace LightSide
 
         private void OnGlyph()
         {
-            var gen = UniTextMeshGenerator.Current;
+            var gen = uniText.MeshGenerator;
             if (gen.font.IsColor) return;
 
             var cluster = gen.currentCluster;
@@ -89,13 +89,26 @@ namespace LightSide
             var baseWeight = gen.font.FaceInfo.weightClass;
             var fakeBoldWeight = Math.Max(0f, (cssWeight - baseWeight) / 300f);
             var dilate = fakeBoldWeight * EmboldenRatio;
-            var baseIdx = gen.vertexCount - 4;
+            var baseIdx = gen.faceBaseIdx;
             var uvs1 = gen.Uvs1;
 
             uvs1[baseIdx].y = dilate;
             uvs1[baseIdx + 1].y = dilate;
             uvs1[baseIdx + 2].y = dilate;
             uvs1[baseIdx + 3].y = dilate;
+
+            var glyphH = gen.Uvs0[baseIdx].w;
+            if (glyphH < 1e-6f) return;
+
+            var padGlyph = GlyphAtlas.Pad / glyphH;
+            var facePad = dilate * padGlyph;
+            var effectivePad = facePad < padGlyph ? facePad : padGlyph;
+            if (effectivePad > gen.currentMaxGlyphExtent)
+                gen.currentMaxGlyphExtent = effectivePad;
+
+            var delta = effectivePad - UniTextMeshGenerator.DefaultSdfPadding;
+            if (delta > 0f)
+                gen.ExpandQuad(baseIdx, delta);
         }
 
         private void OnShaped()
@@ -143,13 +156,11 @@ namespace LightSide
             }
         }
 
-        /// <summary>Encodes CSS weight (100-900) to byte (1-255).</summary>
         internal static byte EncodeCssWeight(int cssWeight)
         {
             return (byte)Math.Clamp((cssWeight - 100) * 254 / 800 + 1, 1, 255);
         }
 
-        /// <summary>Decodes byte (1-255) back to CSS weight (100-900).</summary>
         internal static int DecodeCssWeight(byte encoded)
         {
             return (encoded - 1) * 800 / 254 + 100;

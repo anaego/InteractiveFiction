@@ -74,6 +74,34 @@ namespace LightSide
 
 
     /// <summary>
+    /// Entry storing default simple case mappings for a codepoint (UnicodeData.txt fields 12–14).
+    /// </summary>
+    /// <remarks>
+    /// Each mapping defaults to the codepoint itself when the corresponding field is empty in
+    /// UnicodeData.txt; entries are emitted only when at least one mapping differs from the
+    /// codepoint, keeping the table sparse. Used by the engine instead of <c>char.ToUpperInvariant</c>
+    /// because runtime case tables (Mono, IL2CPP) are incomplete — see Greek final sigma U+03C2.
+    /// </remarks>
+    internal readonly struct CaseMappingEntry : IPointEntry
+    {
+        public readonly int codePoint;
+        public readonly int simpleUppercase;
+        public readonly int simpleLowercase;
+        public readonly int simpleTitlecase;
+
+        int IPointEntry.CodePoint { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => codePoint; }
+
+        public CaseMappingEntry(int codePoint, int simpleUppercase, int simpleLowercase, int simpleTitlecase)
+        {
+            this.codePoint = codePoint;
+            this.simpleUppercase = simpleUppercase;
+            this.simpleLowercase = simpleLowercase;
+            this.simpleTitlecase = simpleTitlecase;
+        }
+    }
+
+
+    /// <summary>
     /// Entry storing paired bracket information for BiDi bracket matching (UAX #9 N0).
     /// </summary>
     internal readonly struct BracketEntry : IPointEntry
@@ -296,8 +324,7 @@ namespace LightSide
             this.scripts = scripts;
         }
     }
-
-
+    
     /// <summary>
     /// Provides Unicode character properties from a precompiled binary data file.
     /// </summary>
@@ -314,12 +341,17 @@ namespace LightSide
     /// <seealso cref="UnicodeData"/>
     internal sealed class UnicodeDataProvider
     {
-        private const uint Magic = 0x554C5452;
+        /// <summary>
+        /// Blob signature 'ULTS'. Bumped from 'ULTR' (0x554C5452) when case mappings were added —
+        /// header reservation grew from 28 to 30 uint slots, so old blobs are not forward-compatible.
+        /// </summary>
+        private const uint Magic = 0x554C5453;
         private const int BmpSize = 65536;
 
         private readonly RangeEntry[] ranges;
         private readonly MirrorEntry[] mirrors;
         private readonly BracketEntry[] brackets;
+        private readonly CaseMappingEntry[] caseMappings;
         private readonly ScriptRangeEntry[] scriptRanges;
         private readonly LineBreakRangeEntry[] lineBreakRanges;
         private readonly ExtendedPictographicRangeEntry[] extendedPictographicRanges;
@@ -357,7 +389,10 @@ namespace LightSide
 
             var fileMagic = reader.ReadUInt32();
             if (fileMagic != Magic)
-                throw new InvalidDataException("Invalid Unicode data blob: magic mismatch.");
+                throw new InvalidDataException(
+                    "Invalid or outdated Unicode data blob: magic mismatch. " +
+                    "Regenerate UnicodeData.bytes via UniText/Unicode Data Generator " +
+                    "(format changed: simple case mappings added).");
 
             UnicodeVersionRaw = unchecked((int)reader.ReadUInt32());
 
@@ -388,6 +423,8 @@ namespace LightSide
             var epOffset = reader.ReadUInt32();
             reader.ReadUInt32();
             var embOffset = reader.ReadUInt32();
+            reader.ReadUInt32();
+            var caseOffset = reader.ReadUInt32();
             reader.ReadUInt32();
 
             stream.Position = rangeOffset;
@@ -729,6 +766,31 @@ namespace LightSide
                 emojiModifierBaseRanges = Array.Empty<EmojiModifierBaseRangeEntry>();
             }
 
+            if (caseOffset != 0)
+            {
+                stream.Position = caseOffset;
+                var caseCount = reader.ReadUInt32();
+                caseMappings = new CaseMappingEntry[caseCount];
+
+                for (uint i = 0; i < caseCount; i++)
+                {
+                    var cp = reader.ReadUInt32();
+                    var upper = reader.ReadUInt32();
+                    var lower = reader.ReadUInt32();
+                    var title = reader.ReadUInt32();
+
+                    caseMappings[i] = new CaseMappingEntry(
+                        unchecked((int)cp),
+                        unchecked((int)upper),
+                        unchecked((int)lower),
+                        unchecked((int)title));
+                }
+            }
+            else
+            {
+                caseMappings = Array.Empty<CaseMappingEntry>();
+            }
+
             bmpBidiClass = new BidiClass[BmpSize];
             bmpJoiningType = new JoiningType[BmpSize];
             bmpScript = new UnicodeScript[BmpSize];
@@ -970,6 +1032,42 @@ namespace LightSide
                 return bmpDefaultIgnorable[codePoint];
 
             return FindInRange(defaultIgnorableRanges, codePoint, out _);
+        }
+
+
+        /// <summary>
+        /// Returns the simple uppercase mapping for a codepoint (UnicodeData.txt field 12).
+        /// Falls back to the codepoint itself when no mapping is defined.
+        /// </summary>
+        /// <remarks>
+        /// "Simple" here matches Unicode terminology: a single-codepoint default mapping that
+        /// ignores locale and the conditional rules in SpecialCasing.txt (e.g. Turkish dotless I,
+        /// Lithuanian dot-above, German ß). Use this in preference to <c>char.ToUpperInvariant</c>
+        /// because the latter relies on incomplete runtime tables on Mono/IL2CPP.
+        /// </remarks>
+        public int GetSimpleUppercase(int codePoint)
+        {
+            return FindByPoint(caseMappings, codePoint, out var entry) ? entry.simpleUppercase : codePoint;
+        }
+
+
+        /// <summary>
+        /// Returns the simple lowercase mapping for a codepoint (UnicodeData.txt field 13).
+        /// Falls back to the codepoint itself when no mapping is defined.
+        /// </summary>
+        public int GetSimpleLowercase(int codePoint)
+        {
+            return FindByPoint(caseMappings, codePoint, out var entry) ? entry.simpleLowercase : codePoint;
+        }
+
+
+        /// <summary>
+        /// Returns the simple titlecase mapping for a codepoint (UnicodeData.txt field 14).
+        /// Falls back to the codepoint itself when no mapping is defined.
+        /// </summary>
+        public int GetSimpleTitlecase(int codePoint)
+        {
+            return FindByPoint(caseMappings, codePoint, out var entry) ? entry.simpleTitlecase : codePoint;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

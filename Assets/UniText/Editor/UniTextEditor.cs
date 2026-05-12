@@ -7,18 +7,18 @@ namespace LightSide
     [CanEditMultipleObjects]
     internal class UniTextEditor : UniTextBaseEditor
     {
-        private SerializedProperty highlighterProp;
         private SerializedProperty raycastTargetProp;
 
         protected override void OnEnable()
         {
             base.OnEnable();
-            highlighterProp = serializedObject.FindProperty("highlighter");
             raycastTargetProp = serializedObject.FindProperty("m_RaycastTarget");
         }
 
         public override void OnInspectorGUI()
         {
+            BeginInspectorFrame();
+
             serializedObject.Update();
             uniText = (UniText)target;
 
@@ -26,11 +26,7 @@ namespace LightSide
             DrawFontSection();
             DrawLayoutSection();
             DrawStyleSection();
-
-            BeginSection("Interaction");
-            EditorGUILayout.PropertyField(raycastTargetProp, new GUIContent("Raycast Target"));
-            EditorGUILayout.PropertyField(highlighterProp, new GUIContent("Highlighter"));
-            EndSection();
+            DrawInteractionSection();
 
             serializedObject.ApplyModifiedProperties();
 
@@ -38,6 +34,14 @@ namespace LightSide
             DrawDebugSection();
 #endif
             DrawLoveLabel();
+
+            EndInspectorFrame();
+        }
+
+        protected override void DrawInteractionFields()
+        {
+            EditorGUILayout.PropertyField(raycastTargetProp, new GUIContent("Raycast Target"));
+            base.DrawInteractionFields();
         }
 
 #if UNITEXT_DEBUG

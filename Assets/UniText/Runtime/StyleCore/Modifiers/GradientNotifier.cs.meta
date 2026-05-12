@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 7c35fb7373e50f641b582d9dbf14fae7
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/GradientNotifier.cs
+  uploadId: 908872

@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: b11067ff53c152e4cabe1e760a7f3e70
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/IGradientProvider.cs
+  uploadId: 908872

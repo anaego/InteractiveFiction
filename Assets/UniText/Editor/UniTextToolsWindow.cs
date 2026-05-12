@@ -17,7 +17,7 @@ namespace LightSide
             DictionaryBuilder
         }
 
-        [MenuItem("Tools/UniText Tools")]
+        [MenuItem("Tools/UniText/Tools")]
         public static void ShowWindow()
         {
             var window = GetWindow<UniTextToolsWindow>("UniText Tools");
@@ -1062,10 +1062,6 @@ namespace LightSide
             }
         }
 
-        /// <summary>
-        /// Parses text into grapheme clusters using GraphemeBreaker.
-        /// Each cluster is an int[] of codepoints.
-        /// </summary>
         private static List<int[]> ParseTextIntoClusters(string text)
         {
             var result = new List<int[]>();
@@ -1334,9 +1330,6 @@ namespace LightSide
                     codepointsToRemove.Add(visibleCodepoints[i]);
         }
 
-        /// <summary>
-        /// Finds glyphs unique to a composition (present in shaped cluster but not in individual codepoints).
-        /// </summary>
         private static HashSet<uint> FindCompositionGlyphs(byte[] fontData, int[] cluster)
         {
             var clusterGlyphs = ShapeToGlyphSet(fontData, cluster);

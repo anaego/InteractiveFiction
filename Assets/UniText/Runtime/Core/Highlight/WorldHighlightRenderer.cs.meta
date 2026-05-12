@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 818a8db25e383dd429d0f32ebb16aad1
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/Core/Highlight/WorldHighlightRenderer.cs
+  uploadId: 908872

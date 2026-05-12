@@ -22,6 +22,33 @@ Demonstrates core UniText features with interactive examples.
 - Click events with `LinkModifier.LinkClicked`
 - Hover events with `LinkModifier.LinkEntered` / `LinkModifier.LinkExited`
 
+### Language (`<lang>` + `UniText.Language`)
+- Per-range OpenType `locl` activation
+- Whole-text language via component property
+
+### Font (`<font>` + `FontFamily.name`)
+- Per-range font override from a named family in the FontStack
+- Whole-text family via `SetWholeText<FontModifier>`
+
+## CJK / locl demo fonts
+
+The Language example renders the same Han ideographs four times with different
+language tags. To see visible regional glyph differences you need a font that
+ships `locl` GSUB substitutions for CJK ideographs.
+
+A ready subset of **Adobe Source Han Sans** (Japanese default + locl covering
+`ZHS`/`ZHT`/`ZHH`/`KOR`) is included as `Fonts/SourceHanSans-Demo.otf` (~96 KB).
+It covers 15 hand-picked CJK codepoints with strong visual differences between
+regions: `直骨雪今家字漢社海高神真食言會學`.
+
+To use it:
+1. Create a `UniTextFont` asset from the `.otf` (UniText → Tools → Import Font).
+2. Add it as the primary of a `FontFamily` in your `UniTextFontStack`.
+3. Navigate to the Language example — the four rows should render distinct glyphs.
+
+The subset license (SIL OFL 1.1) lives next to the file as
+`SourceHanSans-LICENSE.txt` and is redistributable under the same terms.
+
 ## Scene Setup
 
 1. Create a Canvas (UI → Canvas)

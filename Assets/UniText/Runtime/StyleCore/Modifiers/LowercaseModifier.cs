@@ -7,7 +7,8 @@ namespace LightSide
     /// </summary>
     /// <remarks>
     /// No parameter. The transformation happens during Apply, after parsing but before shaping,
-    /// ensuring correct glyph rendering for lowercase characters.
+    /// ensuring correct glyph rendering for lowercase characters. Uses the bundled UCD case
+    /// mapping table rather than <c>char.ToLowerInvariant</c> to avoid runtime gaps in Mono/IL2CPP.
     /// </remarks>
     [Serializable]
     [TypeGroup("Text Style", 0)]
@@ -21,15 +22,7 @@ namespace LightSide
             var clampedEnd = Math.Min(end, cpCount);
 
             for (var i = start; i < clampedEnd; i++)
-                codepoints[i] = ToLowerCodepoint(codepoints[i]);
-        }
-
-        private static int ToLowerCodepoint(int codepoint)
-        {
-            if (codepoint <= UnicodeData.MaxBmp)
-                return char.ToLowerInvariant((char)codepoint);
-
-            return codepoint;
+                codepoints[i] = UnicodeData.GetSimpleLowercase(codepoints[i]);
         }
     }
 }

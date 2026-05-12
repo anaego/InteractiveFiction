@@ -19,6 +19,15 @@ namespace LightSide
             y += lineHeight + spacing;
 
             var modifierProp = ParameterFieldUtility.FindModifierProperty(property);
+
+            if (modifierProp != null
+                && ParameterFieldUtility.TryDetectModifierTypeChanged(paramProp, modifierProp, out var newDefault)
+                && !string.IsNullOrEmpty(paramProp.stringValue))
+            {
+                paramProp.stringValue = newDefault;
+                paramProp.serializedObject.ApplyModifiedProperties();
+            }
+
             var modType = modifierProp?.managedReferenceValue?.GetType();
 
             if (modType == typeof(CompositeModifier))

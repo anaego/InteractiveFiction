@@ -21,14 +21,11 @@ namespace LightSide
         /// <summary>Cached transform data for parallel processing (avoids Unity API calls from worker threads).</summary>
         public struct CachedTransformData
         {
+            public string name;
             /// <summary>The RectTransform.</summary>
             public RectTransform rectTransform;
             /// <summary>The RectTransform rect.</summary>
             public Rect rect;
-            /// <summary>The transform's lossy scale X component.</summary>
-            public float lossyScale;
-            /// <summary>Whether the canvas has a world camera.</summary>
-            public bool hasWorldCamera;
         }
 
         /// <summary>Cached transform data captured before parallel processing.</summary>
@@ -36,19 +33,14 @@ namespace LightSide
 
         protected virtual void PrepareForParallel()
         {
-            var scale = transform.lossyScale.x;
-
-            if (scale <= 0f || float.IsNaN(scale) || float.IsInfinity(scale))
-                scale = 1f;
-
             cachedTransformData = new CachedTransformData
             {
+                name = name,
                 rectTransform = rectTransform,
                 rect = rectTransform.rect,
-                lossyScale = scale,
-                hasWorldCamera = GetHasWorldCamera()
             };
 
+            textResolver?.PrepareForParallel();
             PrepareModifiersForParallel();
         }
 
@@ -57,7 +49,7 @@ namespace LightSide
             for (var i = 0; i < styles.Count; i++)
             {
                 var reg = styles[i];
-                if (reg.IsRegistered)
+                if (reg.IsRegistered && reg.Modifier != null)
                     reg.Modifier.PrepareForParallel();
             }
 
@@ -69,7 +61,7 @@ namespace LightSide
                 for (var j = 0; j < configMods.Count; j++)
                 {
                     var reg = configMods[j];
-                    if (reg.IsRegistered)
+                    if (reg.IsRegistered && reg.Modifier != null)
                         reg.Modifier.PrepareForParallel();
                 }
             }
@@ -97,7 +89,7 @@ namespace LightSide
         private struct FontBatchEntry
         {
             public UniTextFont font;
-            public RenderModee mode;
+            public UniTextRenderMode mode;
             public long[] glyphBits;
             public int glyphBitsMax;
             public List<(uint unicode, uint glyphIndex)> characterEntries;
@@ -114,7 +106,7 @@ namespace LightSide
         private struct FontBatchKey : IEquatable<FontBatchKey>
         {
             public UniTextFont font;
-            public RenderModee mode;
+            public UniTextRenderMode mode;
             public long varHash48;
 
             public bool Equals(FontBatchKey other) =>
@@ -257,7 +249,7 @@ namespace LightSide
             return fontBatchCount;
         }
 
-        private static ref FontBatchEntry GetOrCreateEntry(UniTextFont font, RenderModee mode, long varHash48 = 0)
+        private static ref FontBatchEntry GetOrCreateEntry(UniTextFont font, UniTextRenderMode mode, long varHash48 = 0)
         {
             var key = new FontBatchKey { font = font, mode = mode, varHash48 = varHash48 };
             if (!fontIndexMap.TryGetValue(key, out var index))
@@ -429,6 +421,11 @@ namespace LightSide
 
             var count = componentsBuffer.count;
 
+            UniTextDebug.BeginSample("ComputeLayout");
+            for (var i = 0; i < count; i++)
+                componentsBuffer[i].EnsureLayoutFit();
+            UniTextDebug.EndSample();
+
             UniTextDebug.BeginSample("Rasterize");
             RasterizeGlyphBatches(count);
             EmojiFont.Instance?.SyncMaterialTexture();
@@ -569,13 +566,13 @@ namespace LightSide
                         emojiTileArea += area;
                         emojiGlyphs += fontBatches[i].prepared?.filteredGlyphs.count ?? 0;
                     }
-                    else if (fontBatches[i].mode == RenderModee.MSDF) msdfTileArea += area;
+                    else if (fontBatches[i].mode == UniTextRenderMode.MSDF) msdfTileArea += area;
                     else sdfTileArea += area;
                     if (fontBatches[i].font is not EmojiFont)
                         sdfGlyphs += fontBatches[i].prepared?.filteredGlyphs.count ?? 0;
                 }
-                if (sdfTileArea > 0) GlyphAtlas.GetInstance(RenderModee.SDF).PreAllocate(sdfTileArea);
-                if (msdfTileArea > 0) GlyphAtlas.GetInstance(RenderModee.MSDF).PreAllocate(msdfTileArea);
+                if (sdfTileArea > 0) GlyphAtlas.GetInstance(UniTextRenderMode.SDF).PreAllocate(sdfTileArea);
+                if (msdfTileArea > 0) GlyphAtlas.GetInstance(UniTextRenderMode.MSDF).PreAllocate(msdfTileArea);
                 if (emojiTileArea > 0)
                 {
                     for (int i = 0; i < batchCount; i++)
@@ -603,7 +600,11 @@ namespace LightSide
                 timer.Mark();
 
                 Cat.Meow($"[UniText] {sdfGlyphs} sdf + {emojiGlyphs} emoji = {timer.Total:F0}ms | " +
-                         $"rasterize={timer.Phase(0):F0}ms " +
+                         $"extract={timer.Phase(0):F0}ms " +
+                         $"(ft={GlyphCurveCache.TicksToMs(GlyphCurveCache.ftTicks):F0} " +
+                         $"norm={GlyphCurveCache.TicksToMs(GlyphCurveCache.normalizeTicks):F0} " +
+                         $"color={GlyphCurveCache.TicksToMs(GlyphCurveCache.edgeColorTicks):F0} " +
+                         $"mark={GlyphCurveCache.TicksToMs(GlyphCurveCache.markInternalTicks):F0}) " +
                          $"texture={timer.Phase(1):F0}ms " +
                          $"pack={timer.Phase(2):F0}ms " +
                          $"gpu={timer.Phase(3):F0}ms");
@@ -627,11 +628,11 @@ namespace LightSide
         }
 
         
-        private static Dictionary<(long, RenderModee), UniTextMeshGenerator.BandUpgradeRequest> upgradeMap;
+        private static Dictionary<(long, UniTextRenderMode), UniTextMeshGenerator.BandUpgradeRequest> upgradeMap;
 
         private static void ProcessBandUpgrades(int count)
         {
-            upgradeMap ??= new Dictionary<(long, RenderModee), UniTextMeshGenerator.BandUpgradeRequest>();
+            upgradeMap ??= new Dictionary<(long, UniTextRenderMode), UniTextMeshGenerator.BandUpgradeRequest>();
             upgradeMap.Clear();
 
             for (int i = 0; i < count; i++)
@@ -726,7 +727,6 @@ namespace LightSide
             meshGenerator.FontSize = effectiveFontSize;
             meshGenerator.RenderMode = RenderMode;
             meshGenerator.defaultColor = color;
-            meshGenerator.SetCanvasParametersCached(cached.lossyScale, cached.hasWorldCamera);
             meshGenerator.SetRectOffset(cached.rect);
 
             var virtualGlyphs = buffers.virtualPositionedGlyphs.data != null
@@ -743,7 +743,7 @@ namespace LightSide
             if (sourceText.IsEmpty || meshGenerator == null || !meshGenerator.HasGeneratedData)
             {
                 DeInit();
-                dirtyFlags = DirtyFlags.None;
+                dirtyFlags = UniTextDirtyFlags.None;
                 return;
             }
 
@@ -751,7 +751,7 @@ namespace LightSide
             UpdateGlyphAtlasRefCounts();
 
             UniTextDebug.BeginSample("ApplyToUnity");
-            renderData = meshGenerator.ApplyMeshesToUnity();
+            renderData = meshGenerator.CollectRenderData();
             UniTextDebug.EndSample();
 
 #if UNITEXT_TESTS
@@ -770,7 +770,7 @@ namespace LightSide
 
             meshGenerator.ReturnInstanceBuffers();
 
-            dirtyFlags = DirtyFlags.None;
+            dirtyFlags = UniTextDirtyFlags.None;
         }
 
         #endregion

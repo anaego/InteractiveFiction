@@ -3,22 +3,23 @@ using System;
 namespace LightSide
 {
     /// <summary>
-    /// Adjusts line height/spacing for text ranges.
+    /// Adjusts line height for text ranges.
     /// </summary>
     /// <remarks>
-    /// Parameter: line height or spacing value.
+    /// Parameter: line height value with optional unit.
     /// <list type="bullet">
-    /// <item><c>1.5</c> — 150% of default line height (multiplier)</item>
-    /// <item><c>40</c> — absolute 40 pixels</item>
-    /// <item><c>+10</c> — add 10 pixels to default (delta)</item>
-    /// <item><c>-5</c> — reduce by 5 pixels (delta)</item>
+    /// <item><c>1.5</c> or <c>150%</c> — 150% of default line height</item>
+    /// <item><c>40</c> — absolute 40 pixels (replaces default)</item>
+    /// <item><c>+10</c> — add 10 pixels to base (default or absolute)</item>
+    /// <item><c>-5</c> — reduce by 5 pixels</item>
     /// </list>
+    /// When multiple overlapping ranges set an absolute height, the largest absolute wins
+    /// and serves as the base for any delta or multiplier on the same line.
     /// </remarks>
     [Serializable]
     [TypeGroup("Layout", 3)]
     [TypeDescription("Adjusts the vertical spacing between lines.")]
-    [ParameterField(0, "Mode", "enum:h|s", "h")]
-    [ParameterField(1, "Value", "unit:px|%|delta", "24")]
+    [ParameterField(0, "Value", "unit:px|%|delta", "24")]
     public class LineHeightModifier : BaseModifier
     {
         private enum UnitMode : byte { Multiplier, Absolute, Delta }
@@ -29,7 +30,6 @@ namespace LightSide
             public int end;
             public float value;
             public UnitMode unitMode;
-            public bool isSpacing;
         }
 
         private PooledList<Range> ranges;
@@ -58,18 +58,16 @@ namespace LightSide
                 return;
 
             var reader = new ParameterReader(parameter);
-            if (!reader.Next(out var first))
-                return;
 
-            var isSpacing = false;
+            var afterLegacyMode = reader;
+            if (afterLegacyMode.Next(out var first) &&
+                first.Length == 1 &&
+                (first[0] == 'h' || first[0] == 'H' || first[0] == 's' || first[0] == 'S'))
+            {
+                reader = afterLegacyMode;
+            }
 
-            bool hasMode = first.Length == 1 &&
-                           (first[0] == 'h' || first[0] == 'H' || first[0] == 's' || first[0] == 'S');
-            if (hasMode)
-                isSpacing = first[0] == 's' || first[0] == 'S';
-
-            var valueReader = hasMode ? reader : new ParameterReader(parameter);
-            if (!valueReader.NextUnitFloat(out var value, out var unit))
+            if (!reader.NextUnitFloat(out var value, out var unit))
                 return;
 
             UnitMode unitMode;
@@ -94,7 +92,6 @@ namespace LightSide
                 end = end,
                 value = value,
                 unitMode = unitMode,
-                isSpacing = isSpacing
             });
         }
 
@@ -104,60 +101,56 @@ namespace LightSide
                 return;
 
             var defaultAdvance = lineAdvance;
-            var hasHeight = false;
-            var heightValue = 0f;
-            var hasSpacing = false;
-            var spacingValue = 0f;
+
+            var hasAbsolute = false;
+            var absoluteValue = 0f;
+            for (var i = 0; i < ranges.Count; i++)
+            {
+                var range = ranges[i];
+                if (range.end <= lineStartCluster || range.start >= lineEndCluster)
+                    continue;
+                if (range.unitMode != UnitMode.Absolute)
+                    continue;
+                if (!hasAbsolute || range.value > absoluteValue)
+                {
+                    absoluteValue = range.value;
+                    hasAbsolute = true;
+                }
+            }
+
+            var baseAdvance = hasAbsolute ? absoluteValue : defaultAdvance;
+
+            var hasResult = hasAbsolute;
+            var result = absoluteValue;
 
             for (var i = 0; i < ranges.Count; i++)
             {
                 var range = ranges[i];
-
                 if (range.end <= lineStartCluster || range.start >= lineEndCluster)
                     continue;
 
-                if (range.isSpacing)
+                float candidate;
+                switch (range.unitMode)
                 {
-                    float spacing;
-                    if (range.unitMode == UnitMode.Multiplier)
-                        spacing = defaultAdvance * (range.value - 1f);
-                    else
-                        spacing = range.value;
-
-                    if (!hasSpacing || Math.Abs(spacing) > Math.Abs(spacingValue))
-                    {
-                        hasSpacing = true;
-                        spacingValue = spacing;
-                    }
+                    case UnitMode.Absolute:
+                        continue;
+                    case UnitMode.Delta:
+                        candidate = baseAdvance + range.value;
+                        break;
+                    default:
+                        candidate = baseAdvance * range.value;
+                        break;
                 }
-                else
-                {
-                    float effective;
-                    switch (range.unitMode)
-                    {
-                        case UnitMode.Absolute:
-                            effective = range.value;
-                            break;
-                        case UnitMode.Delta:
-                            effective = defaultAdvance + range.value;
-                            break;
-                        default:
-                            effective = defaultAdvance * range.value;
-                            break;
-                    }
 
-                    if (!hasHeight || effective > heightValue)
-                    {
-                        hasHeight = true;
-                        heightValue = effective;
-                    }
+                if (!hasResult || candidate > result)
+                {
+                    result = candidate;
+                    hasResult = true;
                 }
             }
 
-            if (hasHeight)
-                lineAdvance = heightValue + spacingValue;
-            else if (hasSpacing)
-                lineAdvance = defaultAdvance + spacingValue;
+            if (hasResult)
+                lineAdvance = result;
         }
     }
 

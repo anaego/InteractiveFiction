@@ -109,6 +109,19 @@ namespace LightSide
                 var totalIndent = FoldoutOffset + indentWidth;
                 var yOffset = EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
 
+                var refValue = property.managedReferenceValue;
+                if (refValue != null
+                    && TypedManagedReferenceDrawerRegistry.TryGet(refValue.GetType(), out var customDrawer))
+                {
+                    var bodyRect = new Rect(
+                        position.x + totalIndent,
+                        position.y + yOffset,
+                        position.width - totalIndent,
+                        customDrawer.GetPropertyHeight(property));
+                    customDrawer.OnGUI(bodyRect, property);
+                    return;
+                }
+
                 var iterator = property.Copy();
                 var endProperty = iterator.GetEndProperty();
 
@@ -155,6 +168,13 @@ namespace LightSide
 
             if (property.isExpanded && property.managedReferenceValue != null)
             {
+                if (TypedManagedReferenceDrawerRegistry.TryGet(
+                        property.managedReferenceValue.GetType(), out var customDrawer))
+                {
+                    height += customDrawer.GetPropertyHeight(property) + EditorGUIUtility.standardVerticalSpacing;
+                    return height;
+                }
+
                 var iterator = property.Copy();
                 var endProperty = iterator.GetEndProperty();
 

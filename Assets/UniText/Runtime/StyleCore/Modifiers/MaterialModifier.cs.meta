@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 66f91c57b348ae64ca14465dcde9722c
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/MaterialModifier.cs
+  uploadId: 908872

@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 399e8e8743792d14fb3cd25b9b5a27ec
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/ExtrudeModifier.cs
+  uploadId: 908872

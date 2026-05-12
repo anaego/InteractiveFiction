@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 60e7a941fb2b3004c85a66f171357de2
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/Core/Component/UniTextWorld_ClickHandle.cs
+  uploadId: 908872

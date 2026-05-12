@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: fd35137afb389bf4dbfa132ae79b34de
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/Core/Component/UniTextBase_Layout.cs
+  uploadId: 908872

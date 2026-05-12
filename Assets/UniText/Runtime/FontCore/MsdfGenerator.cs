@@ -118,33 +118,60 @@ namespace LightSide
                 PropagateVectors(vecGrid, tileSize, rxMin, ryMin, rxMax, ryMax);
 
                 for (int y = ryMin; y <= ryMax; y++)
+                {
+                    int rowUp = (y - 1) * tileSize;
+                    int rowThis = y * tileSize;
+                    int rowDown = (y + 1) * tileSize;
+                    bool canCheckNbrs = y > 0 && y < tileSize - 1;
+
                     for (int x = rxMin; x <= rxMax; x++)
                     {
-                        int pi = y * tileSize + x;
+                        int pi = rowThis + x;
                         int idx = pi * 4;
                         float vx = vecGrid[idx], vy = vecGrid[idx + 1];
                         float tx = vecGrid[idx + 2], ty = vecGrid[idx + 3];
 
-                        float t2 = tx * tx + ty * ty;
-                        float signedDist;
-                        if (t2 < 0.5f)
+                        bool thisInside = signGrid[pi] != 0;
+
+                        bool coreInside = thisInside && canCheckNbrs && x > 0 && x < tileSize - 1
+                            && signGrid[rowUp + x - 1] != 0
+                            && signGrid[rowUp + x] != 0
+                            && signGrid[rowUp + x + 1] != 0
+                            && signGrid[rowThis + x - 1] != 0
+                            && signGrid[rowThis + x + 1] != 0
+                            && signGrid[rowDown + x - 1] != 0
+                            && signGrid[rowDown + x] != 0
+                            && signGrid[rowDown + x + 1] != 0;
+
+                        float v;
+                        if (coreInside)
                         {
-                            float ed = math.sqrt(vx * vx + vy * vy);
-                            signedDist = ((signGrid[pi] != 0) ? -1f : 1f) * ed;
+                            v = 0f;
                         }
                         else
                         {
-                            signedDist = encodeSign * (tx * vy - ty * vx);
+                            float t2 = tx * tx + ty * ty;
+                            float signedDist;
+                            if (t2 < 0.5f)
+                            {
+                                float ed = math.sqrt(vx * vx + vy * vy);
+                                signedDist = (thisInside ? -1f : 1f) * ed;
+                            }
+                            else
+                            {
+                                signedDist = encodeSign * (tx * vy - ty * vx);
 
-                            if (signGrid[pi] != 0 && signedDist > 0f)
-                                signedDist = -signedDist;
+                                if (thisInside && signedDist > 0f)
+                                    signedDist = -signedDist;
+                            }
+
+                            v = signedDist * invSpread + 0.5f;
+                            if (v < 0f || v > 1f)
+                                v = thisInside ? 0f : 1f;
                         }
-
-                        float v = signedDist * invSpread + 0.5f;
-                        if (v < 0f || v > 1f)
-                            v = (signGrid[pi] != 0) ? 0f : 1f;
                         msdfBuf[pi * 3 + ch] = v;
                     }
+                }
             }
 
             for (int y = ryMin; y <= ryMax; y++)
@@ -168,24 +195,49 @@ namespace LightSide
             PropagateVectors(vecGrid, tileSize, rxMin, ryMin, rxMax, ryMax);
 
             for (int y = ryMin; y <= ryMax; y++)
+            {
+                int rowUp = (y - 1) * tileSize;
+                int rowThis = y * tileSize;
+                int rowDown = (y + 1) * tileSize;
+                bool canCheckNbrs = y > 0 && y < tileSize - 1;
+
                 for (int x = rxMin; x <= rxMax; x++)
                 {
-                    int pi = y * tileSize + x;
+                    int pi = rowThis + x;
+                    int idx = pi * 4;
+                    float vx = vecGrid[idx], vy = vecGrid[idx + 1];
+                    float tx = vecGrid[idx + 2], ty = vecGrid[idx + 3];
+
+                    bool windInside = signGrid[pi] != 0;
+
+                    bool coreInside = windInside && canCheckNbrs && x > 0 && x < tileSize - 1
+                        && signGrid[rowUp + x - 1] != 0
+                        && signGrid[rowUp + x] != 0
+                        && signGrid[rowUp + x + 1] != 0
+                        && signGrid[rowThis + x - 1] != 0
+                        && signGrid[rowThis + x + 1] != 0
+                        && signGrid[rowDown + x - 1] != 0
+                        && signGrid[rowDown + x] != 0
+                        && signGrid[rowDown + x + 1] != 0;
+
+                    if (coreInside)
+                    {
+                        msdfBuf[pi * 3] = 0f;
+                        msdfBuf[pi * 3 + 1] = 0f;
+                        msdfBuf[pi * 3 + 2] = 0f;
+                        continue;
+                    }
+
                     float r = msdfBuf[pi * 3];
                     float g = msdfBuf[pi * 3 + 1];
                     float b = msdfBuf[pi * 3 + 2];
 
                     float med = math.max(math.min(r, g), math.min(math.max(r, g), b));
-                    bool windInside = signGrid[pi] != 0;
 
                     float signedMargin = windInside ? (0.5f - med) : (med - 0.5f);
 
                     if (signedMargin < 0)
                     {
-                        int idx = pi * 4;
-                        float vx = vecGrid[idx], vy = vecGrid[idx + 1];
-                        float tx = vecGrid[idx + 2], ty = vecGrid[idx + 3];
-
                         float t2 = tx * tx + ty * ty;
                         float dist = t2 < 0.5f
                             ? math.sqrt(vx * vx + vy * vy)
@@ -198,6 +250,7 @@ namespace LightSide
                         msdfBuf[pi * 3 + 2] = v;
                     }
                 }
+            }
 
             ulong halfOneAlpha = (ulong)math.f32tof16(1f) << 48;
             ulong h1 = (ulong)math.f32tof16(1f);

@@ -23,6 +23,9 @@ namespace LightSide
         public GraphemeClusterBreak graphemeClusterBreak;
         public IndicConjunctBreak indicConjunctBreak;
         public bool defaultIgnorable;
+        public int simpleUppercase;
+        public int simpleLowercase;
+        public int simpleTitlecase;
     }
 
 
@@ -83,6 +86,9 @@ namespace LightSide
                 props[cp].generalCategory = GeneralCategory.Cn;
                 props[cp].eastAsianWidth = EastAsianWidth.N;
                 props[cp].indicConjunctBreak = IndicConjunctBreak.None;
+                props[cp].simpleUppercase = cp;
+                props[cp].simpleLowercase = cp;
+                props[cp].simpleTitlecase = cp;
             }
         }
 
@@ -411,6 +417,57 @@ namespace LightSide
                     continue;
 
                 ParseRangeAndApply(codeRangePart, cp => props[cp].defaultIgnorable = true);
+            }
+        }
+
+
+        /// <summary>
+        /// Parses UnicodeData.txt for the simple case mappings (fields 12, 13, 14: uppercase,
+        /// lowercase, titlecase). Range markers (<c>&lt;..., First&gt;</c> / <c>&lt;..., Last&gt;</c>)
+        /// are skipped because UnicodeData.txt does not assign case mappings to ranges.
+        /// </summary>
+        public void LoadUnicodeData(string path)
+        {
+            using var reader = new StreamReader(path);
+
+            string line;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                if (line[0] == '#') continue;
+
+                var fields = line.Split(';');
+                if (fields.Length < 15) continue;
+
+                var name = fields[1];
+                if (name.Length > 0 && name[0] == '<' &&
+                    (name.EndsWith(", First>") || name.EndsWith(", Last>")))
+                    continue;
+
+                var codePoint = ParseHexCodePoint(fields[0].Trim());
+                if (codePoint < 0 || codePoint > MaxCodePoint) continue;
+
+                var upperField = fields[12].Trim();
+                var lowerField = fields[13].Trim();
+                var titleField = fields[14].Trim();
+
+                if (upperField.Length > 0)
+                {
+                    var u = ParseHexCodePoint(upperField);
+                    if (u >= 0 && u <= MaxCodePoint) props[codePoint].simpleUppercase = u;
+                }
+
+                if (lowerField.Length > 0)
+                {
+                    var l = ParseHexCodePoint(lowerField);
+                    if (l >= 0 && l <= MaxCodePoint) props[codePoint].simpleLowercase = l;
+                }
+
+                if (titleField.Length > 0)
+                {
+                    var t = ParseHexCodePoint(titleField);
+                    if (t >= 0 && t <= MaxCodePoint) props[codePoint].simpleTitlecase = t;
+                }
             }
         }
 
@@ -1178,6 +1235,26 @@ namespace LightSide
             return result;
         }
 
+        /// <summary>
+        /// Collects sparse case-mapping entries: one entry per codepoint where at least one of
+        /// upper/lower/titlecase mappings differs from the codepoint itself. Sorted by codepoint
+        /// for binary search at runtime.
+        /// </summary>
+        public List<CaseMappingEntry> BuildCaseMappingEntries()
+        {
+            var result = new List<CaseMappingEntry>();
+
+            for (var cp = 0; cp <= MaxCodePoint; cp++)
+            {
+                ref var p = ref props[cp];
+                if (p.simpleUppercase != cp || p.simpleLowercase != cp || p.simpleTitlecase != cp)
+                    result.Add(new CaseMappingEntry(cp, p.simpleUppercase, p.simpleLowercase, p.simpleTitlecase));
+            }
+
+            return result;
+        }
+
+
         public static List<MirrorEntry> BuildMirrorEntries(string bidiMirroringPath)
         {
             if (string.IsNullOrEmpty(bidiMirroringPath))
@@ -1292,7 +1369,11 @@ namespace LightSide
     /// </remarks>
     internal static class UnicodeBinaryWriter
     {
-        private const uint Magic = 0x554C5452;
+        /// <summary>
+        /// Blob signature 'ULTS'. Must match <see cref="UnicodeDataProvider"/> — bump in lockstep
+        /// whenever the header layout or section list changes.
+        /// </summary>
+        private const uint Magic = 0x554C5453;
 
         /// <summary>
         /// Writes all Unicode property data to a binary file.
@@ -1327,7 +1408,8 @@ namespace LightSide
             IReadOnlyList<ScriptExtensionEntry> scriptExtensions,
             IReadOnlyList<DefaultIgnorableRangeEntry> defaultIgnorables,
             IReadOnlyList<EmojiPresentationRangeEntry> emojiPresentations,
-            IReadOnlyList<EmojiModifierBaseRangeEntry> emojiModifierBases)
+            IReadOnlyList<EmojiModifierBaseRangeEntry> emojiModifierBases,
+            IReadOnlyList<CaseMappingEntry> caseMappings)
         {
             using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
             using var writer = new BinaryWriter(stream);
@@ -1335,7 +1417,7 @@ namespace LightSide
             writer.Write(Magic);
             writer.Write(0x110000);
 
-            for (var i = 0; i < 28; i++)
+            for (var i = 0; i < 30; i++)
                 writer.Write((uint)0);
 
             var rangeOffset = stream.Position;
@@ -1517,6 +1599,18 @@ namespace LightSide
 
             var embLength = (uint)(stream.Position - embOffset);
 
+            var caseOffset = stream.Position;
+            writer.Write((uint)caseMappings.Count);
+            foreach (var cm in caseMappings)
+            {
+                writer.Write((uint)cm.codePoint);
+                writer.Write((uint)cm.simpleUppercase);
+                writer.Write((uint)cm.simpleLowercase);
+                writer.Write((uint)cm.simpleTitlecase);
+            }
+
+            var caseLength = (uint)(stream.Position - caseOffset);
+
             stream.Position = 8;
             writer.Write((uint)rangeOffset);
             writer.Write(rangeLength);
@@ -1546,6 +1640,8 @@ namespace LightSide
             writer.Write(epLength);
             writer.Write((uint)embOffset);
             writer.Write(embLength);
+            writer.Write((uint)caseOffset);
+            writer.Write(caseLength);
 
             writer.Flush();
         }

@@ -14,12 +14,52 @@ namespace LightSide
                 label = new GUIContent(GetCustomLabel(property), GetModifierIcon(property));
             }
 
-            EditorGUI.PropertyField(position, property, label, true);
+            var ruleProp = property.FindPropertyRelative("rule");
+            var modifierProp = property.FindPropertyRelative("modifier");
+
+            var foldoutRect = new Rect(position.x, position.y, position.width, EditorGUIUtility.singleLineHeight);
+            property.isExpanded = EditorGUI.Foldout(foldoutRect, property.isExpanded, label, true);
+
+            if (!property.isExpanded) return;
+
+            EditorGUI.indentLevel++;
+            var y = position.y + EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
+
+            if (!IsRuleStandalone(ruleProp))
+            {
+                var modifierHeight = EditorGUI.GetPropertyHeight(modifierProp, true);
+                EditorGUI.PropertyField(new Rect(position.x, y, position.width, modifierHeight), modifierProp, true);
+                y += modifierHeight + EditorGUIUtility.standardVerticalSpacing;
+            }
+
+            var ruleHeight = EditorGUI.GetPropertyHeight(ruleProp, true);
+            EditorGUI.PropertyField(new Rect(position.x, y, position.width, ruleHeight), ruleProp, true);
+
+            EditorGUI.indentLevel--;
         }
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {
-            return EditorGUI.GetPropertyHeight(property, label, true);
+            if (!property.isExpanded) return EditorGUIUtility.singleLineHeight;
+
+            var ruleProp = property.FindPropertyRelative("rule");
+            var modifierProp = property.FindPropertyRelative("modifier");
+
+            var height = EditorGUIUtility.singleLineHeight + EditorGUIUtility.standardVerticalSpacing;
+            height += EditorGUI.GetPropertyHeight(ruleProp, true);
+
+            if (!IsRuleStandalone(ruleProp))
+            {
+                height += EditorGUIUtility.standardVerticalSpacing;
+                height += EditorGUI.GetPropertyHeight(modifierProp, true);
+            }
+
+            return height;
+        }
+
+        private static bool IsRuleStandalone(SerializedProperty ruleProp)
+        {
+            return ruleProp?.managedReferenceValue is IParseRule rule && rule.IsStandalone;
         }
 
         private static bool IsArrayElement(SerializedProperty property)
@@ -37,6 +77,9 @@ namespace LightSide
 
             if (string.IsNullOrEmpty(modifierName) && string.IsNullOrEmpty(ruleName))
                 return "(Empty)";
+
+            if (IsRuleStandalone(ruleProp))
+                return ruleName;
 
             if (string.IsNullOrEmpty(modifierName))
                 return $"?({ruleName})";

@@ -188,19 +188,22 @@ MonoBehaviour:
     \u062C\u062F\u0627\u064B \u0628\u0627\u0644\u0646\u062A\u064A\u062C\u0629. \u0645\u0627
     \u0631\u0623\u064A\u0643 \u0641\u064A \u0623\u062F\u0627\u0621 \u0627\u0644\u0644\u0627\u0639\u0628\u064A\u0646\u061F"
   fontStack: {fileID: 11400000, guid: 72f6e3edfbc82804791ebe8e4814fa46, type: 2}
-  appearance: {fileID: 11400000, guid: 36ee3940d360ced43a59dd530844bf3d, type: 2}
   fontSize: 32
   baseDirection: 2
   wordWrap: 1
   horizontalAlignment: 0
   verticalAlignment: 0
+  overEdge: 0
+  underEdge: 0
+  leadingDistribution: 0
   autoSize: 0
   minFontSize: 10
   maxFontSize: 72
-  modRegisters:
+  styles:
     items: []
-  modRegisterConfigs:
+  stylePresets:
     items: []
+  renderMode: 0
   highlighter:
     rid: 266425111468834868
   references:
@@ -1123,26 +1126,32 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  text: "Hey there! I'm doing great, thanks for asking! \U0001F389 Yes, I watched
-    the game yesterday and it was absolutely incredible! The team played so well,
-    especially in the second half. Those three goals were amazing \u2014 did you
-    see that last one? The goalkeeper had no chance! By the way, are you free this
-    weekend? We should hang out and watch the next match together. Let me know what
-    you think!\n"
-  fontStack: {fileID: 11400000, guid: 72f6e3edfbc82804791ebe8e4814fa46, type: 2}
-  appearance: {fileID: 11400000, guid: 36ee3940d360ced43a59dd530844bf3d, type: 2}
+  text: "Hey! \U0001F389 Just got back from vacation.\n\n\u0632\u0631\u062A Paris
+    \u0648 London \u062E\u0644\u0627\u0644 5 \u0623\u064A\u0627\u0645 (\u0631\u062D\u0644\u0629
+    \u0631\u0627\u0626\u0639\u0629!) \U0001F30D\n\u0627\u062A\u0635\u0644 \u0628\u064A
+    \u0639\u0644\u0649 +972-50-123-4567 \u0627\u0644\u0633\u0627\u0639\u0629 8 PM
+    \U0001F4DE\n\u0642\u0627\u0644 Tom: \"Hello world\" \u0648\u0636\u062D\u0643
+    \u0643\u062B\u064A\u0631\u0627\u064B \U0001F604\n\n\u0926\u0947\u0916\u0940 \"\u0939\u093F\u0928\u094D\u0926\u0940
+    \u0938\u093F\u0928\u0947\u092E\u093E\" festival \u2014 incredible! \U0001F3AC\n\u0E2D\u0E32\u0E2B\u0E32\u0E23\u0E44\u0E17\u0E22\u0E2D\u0E23\u0E48\u0E2D\u0E22\u0E21\u0E32\u0E01!
+    \u0E23\u0E32\u0E04\u0E32 \u0E3F250 per meal \U0001F35C\nMy family \U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466
+    loved it. Pizza after? \U0001F355"
+  fontStack: {fileID: 11400000, guid: 13a5a88692b9ac64d80fac6630fe3caf, type: 2}
   fontSize: 32
   baseDirection: 2
   wordWrap: 1
   horizontalAlignment: 0
   verticalAlignment: 0
+  overEdge: 0
+  underEdge: 0
+  leadingDistribution: 0
   autoSize: 0
   minFontSize: 10
   maxFontSize: 72
-  modRegisters:
+  styles:
     items: []
-  modRegisterConfigs:
+  stylePresets:
     items: []
+  renderMode: 0
   highlighter:
     rid: 266425111468834867
   references:
@@ -1398,19 +1407,22 @@ MonoBehaviour:
     \u0643\u0627\u0646 \u0627\u0644\u0645\u0648\u0639\u062F \u0645\u0646\u0627\u0633\u0628\u0627\u064B
     \u0644\u0643!\n"
   fontStack: {fileID: 11400000, guid: 72f6e3edfbc82804791ebe8e4814fa46, type: 2}
-  appearance: {fileID: 11400000, guid: 36ee3940d360ced43a59dd530844bf3d, type: 2}
   fontSize: 32
   baseDirection: 2
   wordWrap: 1
   horizontalAlignment: 0
   verticalAlignment: 0
+  overEdge: 0
+  underEdge: 0
+  leadingDistribution: 0
   autoSize: 0
   minFontSize: 10
   maxFontSize: 72
-  modRegisters:
+  styles:
     items: []
-  modRegisterConfigs:
+  stylePresets:
     items: []
+  renderMode: 0
   highlighter:
     rid: 266425111468834866
   references:
@@ -1507,7 +1519,7 @@ Canvas:
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
   m_VertexColorAlwaysGammaSpace: 0
-  m_AdditionalShaderChannelsFlag: 25
+  m_AdditionalShaderChannelsFlag: 31
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
   m_SortingOrder: 0

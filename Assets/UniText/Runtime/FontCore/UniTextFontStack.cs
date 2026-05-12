@@ -143,14 +143,53 @@ namespace LightSide
     [Serializable]
     public struct FontFamily
     {
+        /// <summary>
+        /// Optional user-facing identifier referenced by <c>&lt;font=...&gt;</c> rich-text tags.
+        /// Case-sensitive, unique across the stack (duplicates trigger a warning and first-wins lookup).
+        /// Leave empty for families that should not be addressable by name.
+        /// </summary>
+        public string name;
+
         /// <summary>Primary font. Provides strut metrics (if first family) and codepoint lookup.</summary>
         public UniTextFont primary;
 
         /// <summary>Additional faces: Bold, Italic, BoldItalic, Variable, etc.</summary>
         public UniTextFont[] faces;
 
+        /// <summary>
+        /// Optional BCP 47 language hint (e.g. <c>zh-Hans</c>, <c>zh-Hant</c>, <c>ja</c>, <c>ko</c>,
+        /// <c>en-US</c>, <c>en-GB</c>). When a text run carries a matching language tag, this family
+        /// is preferred during codepoint-to-font resolution. Use for single-stack multi-locale setups
+        /// (e.g. Noto Sans SC/TC/JP/KR in one stack, or <c>en-US</c> print vs <c>en-GB</c> calligraphic).
+        /// Leave empty for locale-agnostic families.
+        /// </summary>
+        public string preferredLanguage;
+
         /// <summary>Pre-built lookup table for face matching. Not serialized.</summary>
         [NonSerialized] internal FontFaceLookup lookup;
+    }
+
+    /// <summary>
+    /// BCP 47 language tag matching helpers. Follows a simplified RFC 4647 "lookup" algorithm
+    /// where a shorter tag is considered to match a longer tag sharing the same prefix
+    /// (e.g. <c>zh</c> matches <c>zh-Hans</c>, and vice versa).
+    /// </summary>
+    public static class LanguageMatching
+    {
+        /// <summary>Returns true if the two BCP 47 tags are equal or one is a prefix of the other.</summary>
+        public static bool Matches(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b))
+                return false;
+            return MatchPrefix(a, b) || MatchPrefix(b, a);
+        }
+
+        private static bool MatchPrefix(string longer, string shorter)
+        {
+            if (longer.Length < shorter.Length) return false;
+            if (!longer.StartsWith(shorter, StringComparison.OrdinalIgnoreCase)) return false;
+            return longer.Length == shorter.Length || longer[shorter.Length] == '-';
+        }
     }
 
     /// <summary>
@@ -188,18 +227,53 @@ namespace LightSide
         private UniTextFont[] resolvedFonts;
 
         /// <summary>
+        /// Looks up a family by its <see cref="FontFamily.name"/> across this stack and its
+        /// fallback chain. Case-sensitive, first-wins.
+        /// </summary>
+        /// <param name="name">The family name to find.</param>
+        /// <param name="family">The matched family on success.</param>
+        /// <returns>True if a family with the given name was found.</returns>
+        public bool TryGetFamilyByName(string name, out FontFamily family)
+        {
+            family = default;
+            if (string.IsNullOrEmpty(name)) return false;
+
+            var families = BuildResolvedFamilies();
+            for (var i = 0; i < families.Length; i++)
+            {
+                if (families[i].name == name)
+                {
+                    family = families[i];
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Finds a font that can render the specified Unicode codepoint.
         /// </summary>
         /// <param name="unicode">Unicode codepoint to find a font for.</param>
         /// <param name="searched">Set of already-searched font IDs (to prevent loops).</param>
         /// <returns>Font that can render the codepoint, or null if none found.</returns>
         public UniTextFont FindFontForCodepoint(uint unicode, HashSet<int> searched = null)
+            => FindFontForCodepoint(unicode, null, searched);
+
+        /// <summary>
+        /// Finds a font that can render the specified Unicode codepoint, preferring families whose
+        /// <see cref="FontFamily.preferredLanguage"/> matches <paramref name="preferredLanguage"/>.
+        /// </summary>
+        /// <param name="unicode">Unicode codepoint to find a font for.</param>
+        /// <param name="preferredLanguage">BCP 47 language tag of the text (e.g. "zh-Hans"), or null.</param>
+        /// <param name="searched">Set of already-searched font IDs (to prevent loops).</param>
+        /// <returns>Font that can render the codepoint, or null if none found.</returns>
+        public UniTextFont FindFontForCodepoint(uint unicode, string preferredLanguage, HashSet<int> searched = null)
         {
             resolvedFonts ??= BuildResolvedFonts();
 
             if (resolvedFonts.Length == 0)
                 return null;
-            
+
             searched ??= new HashSet<int>();
 
             if (UnicodeData.Provider.IsEmojiPresentation((int)unicode) && EmojiFont.IsAvailable)
@@ -213,6 +287,24 @@ namespace LightSide
                     var glyphIndex = Shaper.GetGlyphIndex(emojiFont, unicode);
                     if (glyphIndex != 0) return emojiFont;
 #endif
+                }
+            }
+
+            if (!string.IsNullOrEmpty(preferredLanguage))
+            {
+                var families = BuildResolvedFamilies();
+                for (var fi = 0; fi < families.Length; fi++)
+                {
+                    var lang = families[fi].preferredLanguage;
+                    if (string.IsNullOrEmpty(lang)) continue;
+                    if (!LanguageMatching.Matches(lang, preferredLanguage)) continue;
+
+                    var primary = families[fi].primary;
+                    if (primary == null) continue;
+                    if (!searched.Add(primary.GetCachedInstanceId())) continue;
+
+                    var glyphIndex = Shaper.GetGlyphIndex(primary, unicode);
+                    if (glyphIndex != 0) return primary;
                 }
             }
 
@@ -272,7 +364,26 @@ namespace LightSide
             var visited = new HashSet<UniTextFontStack>();
             CollectFamilies(this, list, visited);
             cachedResolvedFamilies = list.ToArray();
+            WarnOnDuplicateFamilyNames(cachedResolvedFamilies);
             return cachedResolvedFamilies;
+        }
+
+        private static void WarnOnDuplicateFamilyNames(FontFamily[] families)
+        {
+            HashSet<string> seen = null;
+            for (var i = 0; i < families.Length; i++)
+            {
+                var name = families[i].name;
+                if (string.IsNullOrEmpty(name)) continue;
+
+                seen ??= new HashSet<string>();
+                if (!seen.Add(name))
+                {
+                    Debug.LogWarning(
+                        $"[UniTextFontStack] Duplicate family name \"{name}\" — first occurrence wins in <font={name}> lookups. " +
+                        "Use unique names per stack for predictable behavior.");
+                }
+            }
         }
 
         private static void CollectFamilies(UniTextFontStack stack, List<FontFamily> list,

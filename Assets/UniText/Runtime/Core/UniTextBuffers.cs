@@ -87,6 +87,10 @@ namespace LightSide
             buffer.count = 0;
         }
 
+        /// <inheritdoc cref="PooledBuffer{T}.ClearAll"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void ClearAll() => buffer.ClearAll();
+
         /// <inheritdoc/>
         public void Release() => buffer.Return();
     }
@@ -119,7 +123,6 @@ namespace LightSide
         /// <summary>Parsed Unicode codepoints from the input text.</summary>
         public PooledBuffer<int> codepoints;
 
-        /// <summary>BiDi paragraph boundaries and base directions.</summary>
         internal PooledBuffer<BidiParagraph> bidiParagraphs;
 
         /// <summary>Text runs before shaping (segmented by script, direction, font).</summary>
@@ -173,7 +176,6 @@ namespace LightSide
         /// <summary>Font size used during shaping (for scaling calculations).</summary>
         public float shapingFontSize;
 
-        /// <summary>Cached glyph rendering data for mesh generation.</summary>
         internal PooledBuffer<CachedGlyphData> glyphDataCache;
 
         /// <summary>Indicates whether <see cref="glyphDataCache"/> contains valid data.</summary>
@@ -361,8 +363,6 @@ namespace LightSide
 
             bidiLevels.Rent(codepointCapacity);
             scripts.Rent(codepointCapacity);
-            startMargins.EnsureCount(codepointCapacity);
-            startMargins.ClearData();
             glyphDataCache.Rent(glyphCapacity);
 
             isRented = true;
@@ -417,12 +417,8 @@ namespace LightSide
         /// </remarks>
         public void Reset()
         {
-            var cpCount = codepoints.count;
-
-            if (startMargins.Capacity > 0 && cpCount > 0)
-                startMargins.data.AsSpan(0, cpCount).Clear();
-
             codepoints.FakeClear();
+            startMargins.FakeClear();
             bidiParagraphs.FakeClear();
             runs.FakeClear();
             shapedRuns.FakeClear();
@@ -462,11 +458,27 @@ namespace LightSide
             codepoints.EnsureCapacity(newSize);
             bidiLevels.EnsureCapacity(newSize);
             scripts.EnsureCapacity(newSize);
+        }
 
-            var oldCapacity = startMargins.Capacity;
-            startMargins.EnsureCapacity(newSize);
-            if (startMargins.Capacity > oldCapacity)
-                startMargins.data.AsSpan(oldCapacity).Clear();
+        /// <summary>
+        /// Lazily allocates <see cref="startMargins"/> to fit the current codepoint count
+        /// and zero-initializes any region not yet prepared in this pass.
+        /// </summary>
+        /// <remarks>
+        /// Call this from modifiers before writing start margins (e.g., for list indentation).
+        /// Idempotent within a pass — subsequent calls with the same codepoint count are no-ops.
+        /// </remarks>
+        public void PrepareStartMargins()
+        {
+            var cpCount = codepoints.count;
+            if (cpCount == 0) return;
+
+            var prepared = startMargins.count;
+            if (prepared >= cpCount) return;
+
+            startMargins.EnsureCapacity(cpCount);
+            startMargins.data.AsSpan(prepared, cpCount - prepared).Clear();
+            startMargins.count = cpCount;
         }
     }
 
@@ -492,13 +504,15 @@ namespace LightSide
             public readonly int preferredFontId;
             public readonly int resultFontId;
             public readonly int version;
+            public readonly byte language;
 
-            public FontCacheEntry(int codepoint, int preferredFontId, int resultFontId, int version)
+            public FontCacheEntry(int codepoint, int preferredFontId, int resultFontId, int version, byte language)
             {
                 this.codepoint = codepoint;
                 this.preferredFontId = preferredFontId;
                 this.resultFontId = resultFontId;
                 this.version = version;
+                this.language = language;
             }
         }
 
@@ -516,18 +530,19 @@ namespace LightSide
         /// <summary>
         /// Attempts to get a cached font lookup result.
         /// </summary>
-        /// <param name="codepoint">The Unicode codepoint.</param>
-        /// <param name="preferredFontId">The preferred font ID.</param>
-        /// <param name="resultFontId">When successful, contains the cached result font ID.</param>
-        /// <returns><see langword="true"/> if a cached result was found; otherwise, <see langword="false"/>.</returns>
         public static bool TryGet(int codepoint, int preferredFontId, out int resultFontId)
+            => TryGet(codepoint, preferredFontId, 0, out resultFontId);
+
+        /// <summary>Attempts to get a cached font lookup result for a specific language tag.</summary>
+        public static bool TryGet(int codepoint, int preferredFontId, byte language, out int resultFontId)
         {
             EnsureInitialized();
-            var index = (codepoint ^ (preferredFontId << 16)) & CacheMask;
+            var index = (codepoint ^ (preferredFontId << 16) ^ (language << 24)) & CacheMask;
             ref var entry = ref cache[index];
 
             if (entry.codepoint == codepoint &&
                 entry.preferredFontId == preferredFontId &&
+                entry.language == language &&
                 entry.version == fontStateVersion)
             {
                 resultFontId = entry.resultFontId;
@@ -538,17 +553,16 @@ namespace LightSide
             return false;
         }
 
-        /// <summary>
-        /// Caches a font lookup result.
-        /// </summary>
-        /// <param name="codepoint">The Unicode codepoint.</param>
-        /// <param name="preferredFontId">The preferred font ID.</param>
-        /// <param name="resultFontId">The resolved font ID to cache.</param>
+        /// <summary>Caches a font lookup result.</summary>
         public static void Set(int codepoint, int preferredFontId, int resultFontId)
+            => Set(codepoint, preferredFontId, 0, resultFontId);
+
+        /// <summary>Caches a font lookup result keyed by language tag.</summary>
+        public static void Set(int codepoint, int preferredFontId, byte language, int resultFontId)
         {
             EnsureInitialized();
-            var index = (codepoint ^ (preferredFontId << 16)) & CacheMask;
-            cache[index] = new FontCacheEntry(codepoint, preferredFontId, resultFontId, fontStateVersion);
+            var index = (codepoint ^ (preferredFontId << 16) ^ (language << 24)) & CacheMask;
+            cache[index] = new FontCacheEntry(codepoint, preferredFontId, resultFontId, fontStateVersion, language);
         }
 
         /// <summary>

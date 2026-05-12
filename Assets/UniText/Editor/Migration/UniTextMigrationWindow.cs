@@ -43,14 +43,12 @@ namespace LightSide
         LogSeverity? logFilter;
         Vector2 logScroll;
 
-        string newExclusionPath = "";
-
         GUIStyle boxStyle;
         GUIStyle headerStyle;
         GUIStyle richLabelStyle;
         GUIStyle statusGreen, statusYellow, statusRed, statusGray;
 
-        [MenuItem("Tools/UniText Migration")]
+        [MenuItem("Tools/UniText/Migration")]
         public static void ShowWindow()
         {
             var window = GetWindow<UniTextMigrationWindow>("UniText Migration");

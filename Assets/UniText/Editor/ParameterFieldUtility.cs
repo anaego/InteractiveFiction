@@ -26,6 +26,7 @@ namespace LightSide
         private static readonly Dictionary<Type, ParamField[]> fieldCache = new();
         private static readonly Dictionary<string, int> pendingUnitSelections = new();
         internal static readonly Dictionary<string, bool> compositeFoldouts = new();
+        private static readonly Dictionary<string, string> lastModifierSignature = new();
 
         #region Modifier Type Resolution
 
@@ -91,6 +92,65 @@ namespace LightSide
             return name.EndsWith(suffix) ? name.Substring(0, name.Length - suffix.Length) : name;
         }
 
+        internal static string GetModifierSignature(SerializedProperty modifierProp)
+        {
+            var modVal = modifierProp?.managedReferenceValue;
+            if (modVal == null) return "";
+
+            var typeName = modVal.GetType().FullName;
+            var itemsProp = modifierProp.FindPropertyRelative("modifiers.items");
+            if (itemsProp == null || !itemsProp.isArray) return typeName;
+
+            var count = itemsProp.arraySize;
+            var parts = new string[count];
+            for (var i = 0; i < count; i++)
+            {
+                var elem = itemsProp.GetArrayElementAtIndex(i);
+                parts[i] = elem.managedReferenceValue?.GetType().FullName ?? "null";
+            }
+            return typeName + "[" + string.Join(",", parts) + "]";
+        }
+
+        internal static string ResolveModifierDefault(SerializedProperty modifierProp)
+        {
+            var modVal = modifierProp?.managedReferenceValue;
+            if (modVal == null) return "";
+
+            if (modVal is CompositeModifier)
+            {
+                var entries = GetCompositeEntries(modifierProp);
+                return entries != null ? BuildCompositeDefault(entries) : "";
+            }
+
+            var fields = GetFields(modVal.GetType());
+            return fields != null && fields.Length > 0 ? BuildFullDefault(fields) : "";
+        }
+
+        internal static bool TryDetectModifierTypeChanged(SerializedProperty paramProp,
+            SerializedProperty modifierProp, out string newDefault)
+        {
+            var target = paramProp.serializedObject.targetObject;
+            if (target == null)
+            {
+                newDefault = null;
+                return false;
+            }
+
+            var signature = GetModifierSignature(modifierProp);
+            var key = target.GetInstanceID() + ":" + paramProp.propertyPath;
+            var changed = lastModifierSignature.TryGetValue(key, out var prev) && prev != signature;
+            lastModifierSignature[key] = signature;
+
+            if (changed)
+            {
+                newDefault = ResolveModifierDefault(modifierProp);
+                return true;
+            }
+
+            newDefault = null;
+            return false;
+        }
+
         internal static ParamField[] GetFields(Type modifierType)
         {
             if (fieldCache.TryGetValue(modifierType, out var cached))
@@ -127,8 +187,10 @@ namespace LightSide
             var propertyRect = new Rect(x, y, width, totalHeight);
             EditorGUI.BeginProperty(propertyRect, GUIContent.none, paramProp);
 
+            var modifier = ResolveOwningModifier(paramProp);
+
             y = DrawParameterFieldsForSegment(x, width, y, fields,
-                paramProp.stringValue, out var newValue, paramProp.propertyPath);
+                paramProp.stringValue, out var newValue, paramProp.propertyPath, modifier);
 
             if (newValue != paramProp.stringValue)
             {
@@ -140,8 +202,14 @@ namespace LightSide
             return y;
         }
 
+        private static BaseModifier ResolveOwningModifier(SerializedProperty paramProp)
+        {
+            return FindModifierProperty(paramProp)?.managedReferenceValue as BaseModifier;
+        }
+
         internal static float DrawParameterFieldsForSegment(float x, float width, float y,
-            ParamField[] fields, string segment, out string newSegment, string propertyPath = null)
+            ParamField[] fields, string segment, out string newSegment,
+            string propertyPath = null, BaseModifier modifier = null)
         {
             var lineHeight = EditorGUIUtility.singleLineHeight;
             var spacing = EditorGUIUtility.standardVerticalSpacing;
@@ -157,7 +225,7 @@ namespace LightSide
                 ref var field = ref fields[i];
                 var token = i < tokens.Length && tokens[i] != "~" ? tokens[i] : field.defaultValue;
                 var fieldRect = new Rect(x, y, width, lineHeight);
-                var newToken = DrawField(fieldRect, field, token, propertyPath);
+                var newToken = DrawField(fieldRect, field, token, propertyPath, modifier);
 
                 if (newToken != token)
                 {
@@ -255,6 +323,8 @@ namespace LightSide
             CountCompositeStats(entries, out var modsWithFields, out var totalParams);
             if (totalParams == 0) return y;
 
+            var modifier = ResolveOwningModifier(paramProp);
+
             var useFoldouts = modsWithFields > 1 && totalParams > 1;
             var lineHeight = EditorGUIUtility.singleLineHeight;
             var spacing = EditorGUIUtility.standardVerticalSpacing;
@@ -295,7 +365,7 @@ namespace LightSide
                 var segment = i < segments.Length ? segments[i] : "";
                 y = DrawParameterFieldsForSegment(
                     x, width, y, entries[i].fields,
-                    segment, out var newSegment, paramProp.propertyPath);
+                    segment, out var newSegment, paramProp.propertyPath, modifier);
 
                 if (newSegment != segment)
                 {
@@ -351,7 +421,8 @@ namespace LightSide
 
         #region Field Drawing
 
-        internal static string DrawField(Rect rect, ParamField field, string token, string propertyPath = null)
+        internal static string DrawField(Rect rect, ParamField field, string token,
+            string propertyPath = null, BaseModifier modifier = null)
         {
             var type = field.type;
 
@@ -366,7 +437,7 @@ namespace LightSide
             if (type == "string")
                 return DrawStringField(rect, field.name, token);
             if (type.StartsWith("enum:"))
-                return DrawEnumField(rect, field.name, token, type, field.defaultValue);
+                return DrawEnumField(rect, field.name, token, type, field.defaultValue, propertyPath, modifier);
             if (type.StartsWith("unit"))
                 return DrawUnitField(rect, field.name, token, type, field.defaultValue, propertyPath);
 
@@ -449,8 +520,19 @@ namespace LightSide
             return EditorGUI.TextField(rect, label, token ?? "");
         }
 
-        private static string DrawEnumField(Rect rect, string label, string token, string type, string defaultValue)
+        private static readonly Dictionary<string, string> pendingEnumSelections = new();
+
+        private static string DrawEnumField(Rect rect, string label, string token, string type,
+            string defaultValue, string propertyPath, BaseModifier modifier)
         {
+            var spec = type.Substring(5);
+            if (spec.Length > 0 && spec[0] == '@')
+            {
+                var key = spec.Substring(1);
+                if (ParameterProviders.TryGetRichOptions(key, modifier, out var richOptions))
+                    return DrawRichEnumField(rect, label, token, key, richOptions, defaultValue, propertyPath);
+            }
+
             var options = ResolveEnumOptions(type);
             if (options == null || options.Length == 0)
                 return DrawStringField(rect, label, token);
@@ -463,6 +545,74 @@ namespace LightSide
 
             var newIndex = EditorGUI.Popup(rect, label, selectedIndex, options);
             return options[newIndex];
+        }
+
+        private static string DrawRichEnumField(Rect rect, string label, string token, string key,
+            IEnumerable<ParameterOption> richOptions, string defaultValue, string propertyPath)
+        {
+            var pendingKey = (propertyPath ?? "") + "|" + label + "|" + key;
+            if (pendingEnumSelections.TryGetValue(pendingKey, out var pending))
+            {
+                token = pending;
+                pendingEnumSelections.Remove(pendingKey);
+            }
+
+            var list = richOptions as List<ParameterOption> ?? new List<ParameterOption>(richOptions);
+            if (list.Count == 0)
+                return DrawStringField(rect, label, token);
+
+            var selectedIndex = -1;
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (string.Equals(list[i].value, token, StringComparison.Ordinal))
+                {
+                    selectedIndex = i;
+                    break;
+                }
+            }
+            if (selectedIndex < 0)
+            {
+                for (var i = 0; i < list.Count; i++)
+                {
+                    if (string.Equals(list[i].value, defaultValue, StringComparison.Ordinal))
+                    {
+                        selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            var labelW = EditorGUIUtility.labelWidth;
+            var labelRect = new Rect(rect.x, rect.y, labelW, rect.height);
+            var dropdownRect = new Rect(labelRect.xMax, rect.y, rect.width - labelW, rect.height);
+
+            EditorGUI.LabelField(labelRect, label);
+
+            var displayText = selectedIndex >= 0 ? list[selectedIndex].displayName : (token ?? "(none)");
+
+            if (EditorGUI.DropdownButton(dropdownRect, new GUIContent(displayText), FocusType.Keyboard))
+            {
+                var items = new Selector.SelectorItem[list.Count];
+                for (var i = 0; i < list.Count; i++)
+                {
+                    var opt = list[i];
+                    items[i] = new Selector.SelectorItem
+                    {
+                        displayName = opt.displayName,
+                        value = opt.value,
+                        description = opt.description,
+                        rightDecorator = opt.drawPreview,
+                    };
+                }
+
+                var capturedKey = pendingKey;
+                Selector.Show(dropdownRect, items, token, v =>
+                {
+                    pendingEnumSelections[capturedKey] = v as string;
+                }, showSearch: list.Count > 5);
+            }
+
+            return token;
         }
 
         private static string[] ResolveEnumOptions(string type)

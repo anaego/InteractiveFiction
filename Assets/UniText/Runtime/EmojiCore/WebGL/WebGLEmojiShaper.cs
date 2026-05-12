@@ -23,8 +23,39 @@ namespace LightSide
     {
         [ThreadStatic] private static ShapedGlyph[] outputBuffer;
         [ThreadStatic] private static bool[] graphemeBreaks;
+        [ThreadStatic] private static int[] presentationForcedBuffer;
 
         private static readonly FastIntDictionary<bool> zwjSupportCache = new();
+
+        /// <summary>
+        /// Default-text emoji symbols (Extended_Pictographic=Yes, Emoji_Presentation=No)
+        /// need U+FE0F (VS16) appended so Canvas 2D font-selection picks the emoji font
+        /// instead of monochrome text fallback. Desktop HarfBuzz path does not need this
+        /// because shaping is performed directly against the emoji font.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool NeedsEmojiPresentationForcing(int codepoint)
+        {
+            var provider = UnicodeData.Provider;
+            return provider.IsExtendedPictographic(codepoint) && !provider.IsEmojiPresentation(codepoint);
+        }
+
+        /// <summary>
+        /// Returns cluster with VS16 appended if it's a single default-text emoji codepoint
+        /// without an existing variation selector; otherwise returns the original cluster.
+        /// </summary>
+        private static ReadOnlySpan<int> EnsureEmojiPresentation(ReadOnlySpan<int> cluster)
+        {
+            if (cluster.Length != 1 || !NeedsEmojiPresentationForcing(cluster[0]))
+                return cluster;
+
+            if (presentationForcedBuffer == null || presentationForcedBuffer.Length < 2)
+                presentationForcedBuffer = new int[2];
+
+            presentationForcedBuffer[0] = cluster[0];
+            presentationForcedBuffer[1] = UnicodeData.VariationSelector16;
+            return presentationForcedBuffer.AsSpan(0, 2);
+        }
 
         private static ShapedGlyph[] EnsureOutputBuffer(int capacity)
         {
@@ -45,7 +76,8 @@ namespace LightSide
         public static ShapingResult Shape(
             ReadOnlySpan<int> codepoints,
             float fontSize,
-            int upem)
+            int upem,
+            int clusterOffset = 0)
         {
             if (codepoints.IsEmpty || !WebGLEmoji.IsSupported)
                 return new ShapingResult(ReadOnlySpan<ShapedGlyph>.Empty, 0);
@@ -105,12 +137,12 @@ namespace LightSide
                             if (subEnd > subStart)
                             {
                                 var subcluster = cluster.Slice(subStart, subEnd - subStart);
-                                uint subHash = WebGLEmoji.RegisterSequence(subcluster);
+                                uint subHash = WebGLEmoji.RegisterSequence(EnsureEmojiPresentation(subcluster));
 
                                 outBuf[glyphIndex++] = new ShapedGlyph
                                 {
                                     glyphId = (int)subHash,
-                                    cluster = clusterStart + subStart,
+                                    cluster = clusterOffset + clusterStart + subStart,
                                     advanceX = fixedAdvance,
                                     advanceY = 0,
                                     offsetX = 0,
@@ -118,18 +150,19 @@ namespace LightSide
                                 };
                                 totalAdvance += fixedAdvance;
                             }
-                            subStart = j + 1; 
+                            subStart = j + 1;
                         }
                     }
                 }
                 else
                 {
-                    uint hash = WebGLEmoji.RegisterSequence(cluster);
+                    var registerCluster = EnsureEmojiPresentation(cluster);
+                    uint hash = WebGLEmoji.RegisterSequence(registerCluster);
 
                     outBuf[glyphIndex++] = new ShapedGlyph
                     {
                         glyphId = (int)hash,
-                        cluster = clusterStart,
+                        cluster = clusterOffset + clusterStart,
                         advanceX = fixedAdvance,
                         advanceY = 0,
                         offsetX = 0,
@@ -193,7 +226,7 @@ namespace LightSide
                 return 0;
 
             Span<int> single = stackalloc int[1] { (int)codepoint };
-            return WebGLEmoji.RegisterSequence(single);
+            return WebGLEmoji.RegisterSequence(EnsureEmojiPresentation(single));
         }
 
         /// <summary>Gets glyph information for a single codepoint.</summary>
@@ -213,11 +246,12 @@ namespace LightSide
                 return false;
 
             Span<int> single = stackalloc int[1] { (int)codepoint };
+            var sequence = EnsureEmojiPresentation(single);
 
-            glyphIndex = WebGLEmoji.RegisterSequence(single);
+            glyphIndex = WebGLEmoji.RegisterSequence(sequence);
 
             int pixelSize = EmojiFont.Instance?.EmojiPixelSize ?? EmojiFont.DefaultSize;
-            float browserWidth = WebGLEmoji.MeasureEmoji(single, pixelSize);
+            float browserWidth = WebGLEmoji.MeasureEmoji(sequence, pixelSize);
             if (browserWidth <= 0)
                 return false;
 

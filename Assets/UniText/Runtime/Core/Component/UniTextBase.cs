@@ -20,52 +20,6 @@ namespace LightSide
         , ISerializationCallbackReceiver
 #endif
     {
-        #region Enums
-
-        /// <summary>Flags indicating which parts of the text need rebuilding.</summary>
-        [Flags]
-        public enum DirtyFlags
-        {
-            /// <summary>No rebuild needed.</summary>
-            None = 0,
-            /// <summary>Color changed, vertex colors need update.</summary>
-            Color = 1 << 0,
-            /// <summary>Alignment changed, positions need recalculation.</summary>
-            Alignment = 1 << 1,
-            /// <summary>Layout changed, line breaking needs recalculation.</summary>
-            Layout = 1 << 2,
-            /// <summary>Font size changed.</summary>
-            FontSize = 1 << 3,
-            /// <summary>Font asset changed, full rebuild required.</summary>
-            Font = 1 << 4,
-            /// <summary>Text direction changed.</summary>
-            Direction = 1 << 5,
-            /// <summary>Text content changed, full rebuild required.</summary>
-            Text = 1 << 6,
-            /// <summary>Material changed (atlas texture, render mode).</summary>
-            Material = 1 << 7,
-            /// <summary>Sorting order or layer changed (world-space only).</summary>
-            Sorting = 1 << 8,
-            /// <summary>Layout or font size changed.</summary>
-            LayoutRebuild = Layout | FontSize,
-            /// <summary>Text, font, or direction changed.</summary>
-            FullRebuild = Text | Font | Direction,
-            /// <summary>Everything needs rebuilding.</summary>
-            All = Color | Alignment | Layout | FontSize | FullRebuild | Sorting
-        }
-
-        /// <summary>
-        /// Text rendering mode: SDF (rounded corners on effects) or MSDF (sharp corners).
-        /// </summary>
-        public enum RenderModee : byte
-        {
-            /// <summary>Single-channel SDF. Naturally rounds corners on outline/underlay effects.</summary>
-            SDF = 0,
-            /// <summary>Multi-channel SDF. Preserves sharp corners on outline/underlay effects.</summary>
-            MSDF = 1,
-        }
-
-        #endregion
 
         #region Serialized Fields
 
@@ -76,6 +30,10 @@ namespace LightSide
 
         [NonSerialized] protected ReadOnlyMemory<char> sourceText;
         [NonSerialized] private bool isTextFromBuffer;
+
+        [NonSerialized] private IUniTextResolver textResolver;
+        [NonSerialized] private ReadOnlyMemory<char> resolvedText;
+        [NonSerialized] private bool hasResolvedText;
 
         [SerializeField]
         [Tooltip("Font collection with primary font and fallback chain.")]
@@ -138,7 +96,12 @@ namespace LightSide
 
         [SerializeField]
         [Tooltip("SDF: rounded corners on outline/underlay effects. MSDF: sharp corners.")]
-        private RenderModee renderMode = RenderModee.SDF;
+        private UniTextRenderMode renderMode = UniTextRenderMode.SDF;
+
+        [SerializeReference]
+        [TypeSelector]
+        [Tooltip("Text highlighter for visual feedback (click, hover, selection). Set to null to disable.")]
+        private TextHighlighter highlighter = new DefaultTextHighlighter();
 
         #endregion
 
@@ -150,18 +113,15 @@ namespace LightSide
         private AttributeParser attributeParser;
         protected UniTextBuffers buffers;
 
-        private DirtyFlags dirtyFlags = DirtyFlags.All;
+        private UniTextDirtyFlags dirtyFlags = UniTextDirtyFlags.All;
 
         /// <summary>Gets the current dirty flags indicating what needs rebuilding.</summary>
-        public DirtyFlags CurrentDirtyFlags => dirtyFlags;
+        public UniTextDirtyFlags CurrentDirtyFlags => dirtyFlags;
         private bool textIsParsed;
         private bool isRegisteredDirty;
 
         private float resultWidth;
         private float resultHeight;
-
-        /// <summary>Cached effective font size (set by layout/auto-size).</summary>
-        protected float cachedEffectiveFontSize;
 
         private struct RefCountTracker
         {
@@ -215,7 +175,7 @@ namespace LightSide
         public event Action RectHeightChanged;
 
         /// <summary>Raised when dirty flags change, indicating what needs rebuilding.</summary>
-        public event Action<DirtyFlags> DirtyFlagsChanged;
+        public event Action<UniTextDirtyFlags> DirtyFlagsChanged;
 
         #endregion
 
@@ -233,8 +193,70 @@ namespace LightSide
         /// <summary>Gets the buffer container for text processing.</summary>
         public UniTextBuffers Buffers => buffers;
 
-        /// <summary>Gets the text with markup stripped.</summary>
-        public string CleanText => attributeParser?.CleanText ?? Text;
+        /// <summary>
+        /// Gets the runtime source text — the last value assigned via <see cref="Text"/>
+        /// or any <c>SetText</c> overload, before any resolver substitution. Zero-alloc.
+        /// Backing is either a <see cref="string"/> or a <see cref="char"/> buffer supplied
+        /// to <see cref="SetText(char[],int,int)"/>.
+        /// </summary>
+        public ReadOnlyMemory<char> RawText => sourceText;
+
+        /// <summary>
+        /// Gets the substitute produced by the attached <see cref="TextResolver"/> on the
+        /// last rebuild, or an empty memory when no resolver is attached or
+        /// <see cref="IUniTextResolver.TryResolve"/> returned <see langword="false"/>.
+        /// Zero-alloc. Test <see cref="TextOverride"/> for
+        /// <see cref="TextOverrideSource.Resolver"/> to know if this value is in use.
+        /// </summary>
+        public ReadOnlyMemory<char> ResolvedText => hasResolvedText ? resolvedText : default;
+
+        /// <summary>
+        /// Gets the text actually fed into the parsing / shaping / layout pipeline: the
+        /// resolver's output if one is active, otherwise <see cref="RawText"/>. Zero-alloc.
+        /// Still contains markup; for the markup-stripped form use <see cref="CleanText"/>.
+        /// </summary>
+        public ReadOnlyMemory<char> RenderedText => hasResolvedText ? resolvedText : sourceText;
+
+        /// <summary>
+        /// Gets <see cref="RenderedText"/> with parsed markup removed. Zero-alloc. The
+        /// backing buffer is pooled and may be rewritten on the next parse — do not store
+        /// the span; call <c>new string(span)</c> if you need a stable string.
+        /// </summary>
+        public ReadOnlySpan<char> CleanText =>
+            attributeParser != null ? attributeParser.CleanTextSpan : RenderedText.Span;
+
+        /// <summary>
+        /// Combination of flags describing which runtime source(s) are currently overriding
+        /// the serialized <see cref="Text"/>. Flags may combine — for example,
+        /// <see cref="TextOverrideSource.SetText"/> | <see cref="TextOverrideSource.Resolver"/>
+        /// when a <c>SetText</c> buffer feeds an attached resolver that further substitutes
+        /// the text.
+        /// </summary>
+        public TextOverrideSource TextOverride =>
+            (isTextFromBuffer ? TextOverrideSource.SetText : 0) |
+            (hasResolvedText ? TextOverrideSource.Resolver : 0);
+
+        /// <summary>
+        /// Gets or sets a resolver that may override the source text before parsing without
+        /// modifying the serialized <c>text</c> field. Useful for editor-time localization
+        /// preview and runtime text-binding without dirtying scenes or prefabs.
+        /// See <see cref="IUniTextResolver"/> for the contract.
+        /// </summary>
+        public IUniTextResolver TextResolver
+        {
+            get => textResolver;
+            set
+            {
+                if (textResolver == value) return;
+                var previous = textResolver;
+                textResolver = value;
+                hasResolvedText = false;
+                resolvedText = default;
+                previous?.OnDetached(this);
+                value?.OnAttached(this);
+                SetDirty(UniTextDirtyFlags.Text);
+            }
+        }
 
         /// <summary>Gets the computed size of the rendered text.</summary>
         public Vector2 ResultSize => new(resultWidth, resultHeight);
@@ -256,18 +278,20 @@ namespace LightSide
         /// <summary>Gets the list of modifier configuration assets.</summary>
         public IReadOnlyList<StylePreset> StylePresets => stylePresets;
 
-        /// <summary>Gets or sets the source text, which may contain markup parsed by registered <see cref="IParseRule"/> implementations.</summary>
+        /// <summary>
+        /// Gets or sets the serialized source text. The getter returns the serialized field
+        /// as-is and has no side effects — use <see cref="RenderedText"/> to observe what is
+        /// actually being rendered when an override (<c>SetText</c> buffer or
+        /// <see cref="TextResolver"/>) is active.
+        /// </summary>
+        /// <remarks>
+        /// The setter normalizes CRLF to LF, writes both the serialized field and the runtime
+        /// source buffer, and clears any prior <c>SetText</c> override. It does not affect an
+        /// attached <see cref="TextResolver"/>.
+        /// </remarks>
         public string Text
         {
-            get
-            {
-                if (isTextFromBuffer)
-                {
-                    text = new string(sourceText.Span);
-                    isTextFromBuffer = false;
-                }
-                return text;
-            }
+            get => text;
             set
             {
                 if (value != null && value.IndexOf('\r') >= 0)
@@ -283,7 +307,7 @@ namespace LightSide
                 }
                 else
                 {
-                    SetDirty(DirtyFlags.Text);
+                    SetDirty(UniTextDirtyFlags.Text);
                 }
             }
         }
@@ -302,9 +326,44 @@ namespace LightSide
             }
             else
             {
-                SetDirty(DirtyFlags.Text);
+                SetDirty(UniTextDirtyFlags.Text);
             }
         }
+
+        /// <summary>
+        /// Sets the text to render without writing to the serialized <c>text</c> field.
+        /// The change is visible at runtime and in edit mode without marking the scene or
+        /// prefab as dirty — suitable for editor-time preview (localization) or transient
+        /// runtime substitution.
+        /// </summary>
+        /// <param name="source">The text buffer to render. Must remain valid until the next
+        /// text assignment on this component.</param>
+        /// <remarks>
+        /// Unlike the <see cref="Text"/> setter, this method does not normalize line endings
+        /// and does not persist the value. For derived text reacting to an external signal,
+        /// consider <see cref="TextResolver"/> instead.
+        /// </remarks>
+        public void SetText(ReadOnlyMemory<char> source)
+        {
+            sourceText = source;
+            isTextFromBuffer = true;
+            if (sourceText.IsEmpty)
+            {
+                DeInit();
+            }
+            else
+            {
+                SetDirty(UniTextDirtyFlags.Text);
+            }
+        }
+
+        /// <summary>
+        /// Sets the text to render without writing to the serialized <c>text</c> field.
+        /// Convenience overload equivalent to <c>SetText(source.AsMemory())</c>.
+        /// The change does not mark the scene or prefab as dirty.
+        /// </summary>
+        /// <param name="source">The text to render. <see langword="null"/> is treated as empty.</param>
+        public void SetText(string source) => SetText((source ?? "").AsMemory());
 
         private static string NormalizeLineEndings(string input)
         {
@@ -335,6 +394,19 @@ namespace LightSide
             });
         }
 
+        /// <summary>Gets or sets the text highlighter for visual feedback on interactions.</summary>
+        public TextHighlighter Highlighter
+        {
+            get => highlighter;
+            set
+            {
+                if (highlighter == value) return;
+                highlighter?.Destroy();
+                highlighter = value;
+                highlighter?.Initialize(this);
+            }
+        }
+
         /// <summary>Gets or sets the font collection.</summary>
         public UniTextFontStack FontStack
         {
@@ -353,7 +425,7 @@ namespace LightSide
 #if UNITY_EDITOR
                 ListenConfigChanged();
 #endif
-                SetDirty(DirtyFlags.Font);
+                SetDirty(UniTextDirtyFlags.Font);
             }
         }
 
@@ -365,7 +437,28 @@ namespace LightSide
             {
                 if (Mathf.Approximately(fontSize, value)) return;
                 fontSize = Mathf.Max(0.01f, value);
-                SetDirty(DirtyFlags.FontSize);
+                SetDirty(UniTextDirtyFlags.FontSize);
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets the default BCP 47 language tag for this text (e.g. <c>zh-Hans</c>,
+        /// <c>zh-Hant</c>, <c>ja</c>, <c>ko</c>, <c>en-US</c>). Activates the OpenType <c>locl</c>
+        /// feature and drives <see cref="FontFamily.preferredLanguage"/> font selection.
+        /// Per-range overrides via <c>&lt;lang=...&gt;...&lt;/lang&gt;</c> take priority.
+        /// </summary>
+        /// <remarks>
+        /// Runtime convenience on top of <see cref="LanguageModifier"/>. The setter uses
+        /// <see cref="SetWholeText{T}"/> / <see cref="ClearWholeText{T}"/> — shared presets
+        /// are never modified; only the local <see cref="Styles"/> list is touched.
+        /// </remarks>
+        public string Language
+        {
+            get => GetWholeTextParameter<LanguageModifier>();
+            set
+            {
+                if (string.IsNullOrEmpty(value)) ClearWholeText<LanguageModifier>();
+                else SetWholeText<LanguageModifier>(value);
             }
         }
 
@@ -377,7 +470,7 @@ namespace LightSide
             {
                 if (baseDirection == value) return;
                 baseDirection = value;
-                SetDirty(DirtyFlags.Direction);
+                SetDirty(UniTextDirtyFlags.Direction);
             }
         }
 
@@ -389,7 +482,7 @@ namespace LightSide
             {
                 if (wordWrap == value) return;
                 wordWrap = value;
-                SetDirty(DirtyFlags.Layout);
+                SetDirty(UniTextDirtyFlags.Layout);
             }
         }
 
@@ -401,7 +494,7 @@ namespace LightSide
             {
                 if (horizontalAlignment == value) return;
                 horizontalAlignment = value;
-                SetDirty(DirtyFlags.Alignment);
+                SetDirty(UniTextDirtyFlags.Alignment);
             }
         }
 
@@ -413,7 +506,7 @@ namespace LightSide
             {
                 if (verticalAlignment == value) return;
                 verticalAlignment = value;
-                SetDirty(DirtyFlags.Alignment);
+                SetDirty(UniTextDirtyFlags.Alignment);
             }
         }
 
@@ -425,7 +518,7 @@ namespace LightSide
             {
                 if (overEdge == value) return;
                 overEdge = value;
-                SetDirty(DirtyFlags.Layout);
+                SetDirty(UniTextDirtyFlags.Layout);
             }
         }
 
@@ -437,7 +530,7 @@ namespace LightSide
             {
                 if (underEdge == value) return;
                 underEdge = value;
-                SetDirty(DirtyFlags.Layout);
+                SetDirty(UniTextDirtyFlags.Layout);
             }
         }
 
@@ -449,12 +542,12 @@ namespace LightSide
             {
                 if (leadingDistribution == value) return;
                 leadingDistribution = value;
-                SetDirty(DirtyFlags.Layout);
+                SetDirty(UniTextDirtyFlags.Layout);
             }
         }
 
         /// <summary>Gets or sets the text rendering mode (SDF for rounded, MSDF for sharp corner effects).</summary>
-        public RenderModee RenderMode
+        public UniTextRenderMode RenderMode
         {
             get => renderMode;
             set
@@ -465,7 +558,7 @@ namespace LightSide
                 renderMode = value;
                 if (textProcessor != null)
                     textProcessor.HasValidGlyphsInAtlas = false;
-                SetDirty(DirtyFlags.Material);
+                SetDirty(UniTextDirtyFlags.Material);
             }
         }
 
@@ -477,7 +570,7 @@ namespace LightSide
             {
                 if (autoSize == value) return;
                 autoSize = value;
-                SetDirty(DirtyFlags.Layout);
+                SetDirty(UniTextDirtyFlags.Layout);
             }
         }
 
@@ -490,7 +583,7 @@ namespace LightSide
                 value = Mathf.Max(0.01f, value);
                 if (Mathf.Approximately(minFontSize, value)) return;
                 minFontSize = value;
-                if (autoSize) SetDirty(DirtyFlags.Layout);
+                if (autoSize) SetDirty(UniTextDirtyFlags.Layout);
             }
         }
 
@@ -503,7 +596,7 @@ namespace LightSide
                 value = Mathf.Max(0.01f, value);
                 if (Mathf.Approximately(maxFontSize, value)) return;
                 maxFontSize = value;
-                if (autoSize) SetDirty(DirtyFlags.Layout);
+                if (autoSize) SetDirty(UniTextDirtyFlags.Layout);
             }
         }
 
@@ -515,18 +608,18 @@ namespace LightSide
             {
                 if (base.color == value) return;
                 base.color = value;
-                SetDirty(DirtyFlags.Color);
+                SetDirty(UniTextDirtyFlags.Color);
             }
         }
 
         /// <summary>Marks the specified aspects of the text as needing rebuild.</summary>
-        public void SetDirty(DirtyFlags flags)
+        public void SetDirty(UniTextDirtyFlags flags)
         {
-            if (flags == DirtyFlags.None) return;
+            if (flags == UniTextDirtyFlags.None) return;
             Cat.MeowFormat("[UniText] SetDirty: {0}, {1}", flags, name);
             dirtyFlags |= flags;
 
-            if ((flags & DirtyFlags.Font) != 0)
+            if ((flags & UniTextDirtyFlags.Font) != 0)
             {
                 DeinitializeAllStyles();
                 fontProvider = null;
@@ -534,18 +627,18 @@ namespace LightSide
                 meshGenerator = null;
             }
 
-            if ((flags & DirtyFlags.FullRebuild) != 0)
+            if ((flags & UniTextDirtyFlags.FullRebuild) != 0)
             {
                 textIsParsed = false;
                 textProcessor?.InvalidateFirstPassData();
                 InvalidateLayoutCache();
             }
-            else if ((flags & DirtyFlags.LayoutRebuild) != 0)
+            else if ((flags & UniTextDirtyFlags.LayoutRebuild) != 0)
             {
                 textProcessor?.InvalidateLayoutData();
                 InvalidateLayoutCache();
             }
-            else if ((flags & DirtyFlags.Alignment) != 0)
+            else if ((flags & UniTextDirtyFlags.Alignment) != 0)
             {
                 textProcessor?.InvalidatePositionedGlyphs();
             }
@@ -585,7 +678,7 @@ namespace LightSide
             {
                 EnsureAttributeParserCreated();
                 style.Register(this, attributeParser);
-                SetDirty(DirtyFlags.Text);
+                SetDirty(UniTextDirtyFlags.Text);
             }
         }
         
@@ -599,7 +692,7 @@ namespace LightSide
                 EnsureAttributeParserCreated();
                 style.Register(this, attributeParser);
             }
-            SetDirty(DirtyFlags.Text);
+            SetDirty(UniTextDirtyFlags.Text);
         }
 #endif
         
@@ -612,7 +705,7 @@ namespace LightSide
             if (style.IsRegistered && style.Owner == this)
             {
                 style.Unregister(attributeParser);
-                SetDirty(DirtyFlags.Text);
+                SetDirty(UniTextDirtyFlags.Text);
             }
 
             if (styles.Count == 0 && !HasAnyStylePresets())
@@ -632,6 +725,38 @@ namespace LightSide
             }
             styles.Clear();
             DestroyAttributeParser();
+        }
+
+        /// <summary>
+        /// Adds a standalone parse rule (one that operates without a modifier, e.g. &lt;noparse&gt;).
+        /// The rule must report <see cref="IParseRule.IsStandalone"/> as <see langword="true"/>.
+        /// </summary>
+        /// <param name="rule">The standalone rule to add.</param>
+        public void AddRule(IParseRule rule)
+        {
+            if (rule == null) return;
+            if (!rule.IsStandalone)
+            {
+                Debug.LogError($"[UniText] Rule {rule.GetType().Name} is not standalone. Use AddStyle with a modifier instead.");
+                return;
+            }
+
+            AddStyle(new Style { Rule = rule });
+        }
+
+        /// <summary>Removes a standalone rule previously added via <see cref="AddRule"/>.</summary>
+        /// <param name="rule">The rule to remove.</param>
+        /// <returns><see langword="true"/> if the rule was found and removed.</returns>
+        public bool RemoveRule(IParseRule rule)
+        {
+            if (rule == null) return false;
+
+            for (var i = 0; i < styles.Count; i++)
+            {
+                if (styles[i].Rule == rule && styles[i].Modifier == null)
+                    return RemoveStyle(styles[i]);
+            }
+            return false;
         }
 
         /// <summary>Adds a shared style preset to this component at runtime.</summary>
@@ -749,7 +874,7 @@ namespace LightSide
                     RegisterStylesWithParser(runtimeStylePresetCopies[i].styles);
                 }
                 textProcessor.Parsed += attributeParser.Apply;
-                SetDirty(DirtyFlags.Text);
+                SetDirty(UniTextDirtyFlags.Text);
             }
         }
 
@@ -778,7 +903,6 @@ namespace LightSide
             return false;
         }
 
-        /// <summary>Registers all valid Styles with the parser.</summary>
         private void RegisterStylesWithParser(StyledList<Style> mods)
         {
             for (var i = 0; i < mods.Count; i++)
@@ -806,7 +930,7 @@ namespace LightSide
             }
 
             attributeParser = null;
-            SetDirty(DirtyFlags.Text);
+            SetDirty(UniTextDirtyFlags.Text);
         }
 
         #endregion
@@ -819,7 +943,14 @@ namespace LightSide
             Cat.Meow($"[UniText] OnEnable, {name}", this);
             sourceText = (text ?? "").AsMemory();
             Sub();
-            SetDirty(DirtyFlags.All);
+            SetDirty(UniTextDirtyFlags.All);
+            highlighter?.Initialize(this);
+        }
+
+        protected virtual void Update()
+        {
+            highlighter?.Update();
+            InteractiveRangeRegistry.Get(buffers)?.UpdateProviderHighlighters();
         }
 
         protected override void OnDisable()
@@ -831,7 +962,18 @@ namespace LightSide
 
         protected override void OnDestroy()
         {
+            highlighter?.Destroy();
+            rangeEntriesScratch?.Return();
+            rangeEntriesScratch = null;
             base.OnDestroy();
+            if (textResolver != null)
+            {
+                var r = textResolver;
+                textResolver = null;
+                hasResolvedText = false;
+                resolvedText = default;
+                r.OnDetached(this);
+            }
             DeInit(true);
             DestroyRuntimeConfigCopies();
         }
@@ -842,6 +984,7 @@ namespace LightSide
 #if UNITY_EDITOR
             ListenConfigChanged();
             UnityEditor.SceneVisibilityManager.visibilityChanged += OnSceneVisibilityChanged;
+            SceneVisibilityOverlay.Changed += OnSceneVisibilityChanged;
 #endif
             EmojiFont.DisableChanged += OnEmojiFontDisableChanged;
             GlyphAtlas.AnyAtlasCompacted += OnAtlasCompacted;
@@ -853,6 +996,7 @@ namespace LightSide
 #if UNITY_EDITOR
             UnlistenConfigChanged();
             UnityEditor.SceneVisibilityManager.visibilityChanged -= OnSceneVisibilityChanged;
+            SceneVisibilityOverlay.Changed -= OnSceneVisibilityChanged;
 #endif
             EmojiFont.DisableChanged -= OnEmojiFontDisableChanged;
             GlyphAtlas.AnyAtlasCompacted -= OnAtlasCompacted;
@@ -871,7 +1015,7 @@ namespace LightSide
 
             if (textProcessor != null)
                 textProcessor.buf.hasValidGlyphCache = false;
-            SetDirty(DirtyFlags.Material);
+            SetDirty(UniTextDirtyFlags.Material);
         }
 
         protected void DeInit(bool isDestroying = false)
@@ -928,7 +1072,7 @@ namespace LightSide
 
         private void OnEmojiFontDisableChanged()
         {
-            SetDirty(DirtyFlags.All);
+            SetDirty(UniTextDirtyFlags.All);
         }
 
         protected override void OnRectTransformDimensionsChange()
@@ -956,16 +1100,16 @@ namespace LightSide
 
                 if (canReuse)
                 {
-                    SetDirty(DirtyFlags.Alignment);
+                    SetDirty(UniTextDirtyFlags.Alignment);
                 }
                 else
                 {
-                    SetDirty(DirtyFlags.Layout);
+                    SetDirty(UniTextDirtyFlags.Layout);
                 }
             }
             else
             {
-                SetDirty(DirtyFlags.Alignment);
+                SetDirty(UniTextDirtyFlags.Alignment);
             }
         }
 
@@ -973,14 +1117,14 @@ namespace LightSide
         {
             base.OnTransformParentChanged();
             RecalculateMasking();
-            SetDirty(DirtyFlags.Layout);
+            SetDirty(UniTextDirtyFlags.Layout);
         }
 
         private void OnConfigChanged()
         {
             if (UniTextFont.IsAtlasClearing)
                 ReleaseAllGlyphAtlasRefs();
-            SetDirty(DirtyFlags.All);
+            SetDirty(UniTextDirtyFlags.All);
         }
 
         private void DestroyRuntimeConfigCopies()
@@ -1042,13 +1186,22 @@ namespace LightSide
             if (!textIsParsed)
             {
                 UniTextDebug.BeginSample("UniText.ParseAttributes");
+
+                if (textResolver != null)
+                    hasResolvedText = textResolver.TryResolve(sourceText, out resolvedText);
+                else
+                    hasResolvedText = false;
+
+                var textToParse = hasResolvedText ? resolvedText.Span : sourceText.Span;
+
                 attributeParser?.ResetModifiers();
-                attributeParser?.Parse(sourceText.Span);
+                attributeParser?.Parse(textToParse);
                 textIsParsed = true;
                 UniTextDebug.EndSample();
             }
 
-            return attributeParser != null ? attributeParser.CleanTextSpan : sourceText.Span;
+            if (attributeParser != null) return attributeParser.CleanTextSpan;
+            return hasResolvedText ? resolvedText.Span : sourceText.Span;
         }
 
         private TextProcessSettings CreateProcessSettings(Rect rect, float effectiveFontSize) => new()
@@ -1075,17 +1228,11 @@ namespace LightSide
         /// <summary>Clears all sub-mesh renderers (without destroying GameObjects).</summary>
         protected abstract void ClearAllRenderers();
 
-        /// <summary>Returns true if the component renders in world space with a camera (affects xScale calculation).</summary>
-        protected abstract bool GetHasWorldCamera();
-
         /// <summary>Called after SetDirty. Override to trigger Canvas layout rebuild.</summary>
-        protected virtual void OnSetDirty(DirtyFlags flags) { }
+        protected virtual void OnSetDirty(UniTextDirtyFlags flags) { }
 
         /// <summary>Called during DeInit for subclass-specific cleanup (e.g., stencil materials).</summary>
         protected virtual void OnDeInit() { }
-
-        /// <summary>Called when layout cache should be invalidated. Override for ILayoutElement support.</summary>
-        protected virtual void InvalidateLayoutCache() { }
 
 #if UNITEXT_TESTS
         /// <summary>Called after meshes are applied, before ReturnInstanceBuffers. Override for test mesh copying.</summary>
@@ -1097,80 +1244,181 @@ namespace LightSide
         #region Glyph Query
 
         /// <summary>
-        /// Gets bounding rectangles for a cluster range.
+        /// Collects per-line geometric runs of positioned glyphs whose clusters fall inside
+        /// <c>[<paramref name="startCluster"/>, <paramref name="endCluster"/>)</c>. Output bounds
+        /// are in mesh-local coordinates with X clamped to each line's visible content extent
+        /// (trailing whitespace excluded via <see cref="TextLine.width"/>). One <see cref="LineRangeEntry"/>
+        /// is emitted per contiguous run within a line — multiple entries per line are possible if the
+        /// matched clusters are non-contiguous in visual order.
         /// </summary>
-        /// <param name="startCluster">Start cluster index (inclusive).</param>
-        /// <param name="endCluster">End cluster index (exclusive).</param>
-        /// <param name="results">List to receive bounds (cleared before use).</param>
-        public void GetRangeBounds(int startCluster, int endCluster, IList<Rect> results)
+        /// <param name="startCluster">Cluster start (inclusive).</param>
+        /// <param name="endCluster">Cluster end (exclusive).</param>
+        /// <param name="output">Pooled list to receive entries (cleared before use).</param>
+        public void CollectRangeEntries(int startCluster, int endCluster, PooledList<LineRangeEntry> output)
         {
-            results.Clear();
+            output.FakeClear();
 
-            if (textProcessor == null)
-                return;
+            if (textProcessor == null) return;
 
             var lines = buffers.lines;
-            var runs = buffers.orderedRuns;
+            var lineCount = lines.count;
+            if (lineCount == 0) return;
+
             var glyphs = textProcessor.PositionedGlyphs;
 
-            if (glyphs.Length == 0 || lines.count == 0)
-                return;
-
-            var rect = cachedTransformData.rect;
-
-            var glyphIndex = 0;
-
-            for (var lineIdx = 0; lineIdx < lines.count; lineIdx++)
+            for (var li = 0; li < lineCount; li++)
             {
-                ref readonly var line = ref lines[lineIdx];
+                ref readonly var line = ref lines[li];
+                if (line.range.End <= startCluster || line.range.start >= endCluster) continue;
+                if (line.glyphCount == 0) continue;
 
-                var lineGlyphCount = 0;
-                var runEnd = line.runStart + line.runCount;
-                for (var r = line.runStart; r < runEnd; r++)
-                    lineGlyphCount += runs[r].glyphCount;
+                var firstG = line.glyphStart;
+                var lastG = firstG + line.glyphCount - 1;
 
-                float minX = float.MaxValue, maxX = float.MinValue;
-                float minY = float.MaxValue, maxY = float.MinValue;
-                var inGroup = false;
+                float contentLeft, contentRight;
+                if (line.IsRtl)
+                {
+                    contentRight = glyphs[lastG].right;
+                    contentLeft = contentRight - line.widthPx;
+                }
+                else
+                {
+                    contentLeft = glyphs[firstG].left;
+                    contentRight = contentLeft + line.widthPx;
+                }
 
-                var lineGlyphEnd = glyphIndex + lineGlyphCount;
-                for (var g = glyphIndex; g < lineGlyphEnd; g++)
+                var emitFirstG = -1;
+                var emitLastG = -1;
+                float minX = 0f, maxX = 0f, minY = 0f, maxY = 0f;
+
+                for (var g = firstG; g <= lastG; g++)
                 {
                     ref readonly var glyph = ref glyphs[g];
                     var inRange = glyph.cluster >= startCluster && glyph.cluster < endCluster;
 
                     if (inRange)
                     {
-                        if (glyph.left < minX) minX = glyph.left;
-                        if (glyph.right > maxX) maxX = glyph.right;
-                        if (glyph.top < minY) minY = glyph.top;
-                        if (glyph.bottom > maxY) maxY = glyph.bottom;
-                        inGroup = true;
+                        if (emitFirstG < 0)
+                        {
+                            emitFirstG = g;
+                            minX = glyph.left;
+                            maxX = glyph.right;
+                            minY = glyph.top;
+                            maxY = glyph.bottom;
+                        }
+                        else
+                        {
+                            if (glyph.left < minX) minX = glyph.left;
+                            if (glyph.right > maxX) maxX = glyph.right;
+                            if (glyph.top < minY) minY = glyph.top;
+                            if (glyph.bottom > maxY) maxY = glyph.bottom;
+                        }
+                        emitLastG = g;
                     }
-                    else if (inGroup)
+                    else if (emitFirstG >= 0)
                     {
-                        var rectLeft = rect.xMin + minX;
-                        var rectBottom = rect.yMax - maxY;
-                        var width = maxX - minX;
-                        var height = maxY - minY;
-                        results.Add(new Rect(rectLeft, rectBottom, width, height));
-
-                        minX = float.MaxValue; maxX = float.MinValue;
-                        minY = float.MaxValue; maxY = float.MinValue;
-                        inGroup = false;
+                        var clampedMinX = minX < contentLeft ? contentLeft : minX;
+                        var clampedMaxX = maxX > contentRight ? contentRight : maxX;
+                        if (clampedMaxX > clampedMinX)
+                        {
+                            output.Add(new LineRangeEntry
+                            {
+                                lineIdx = li,
+                                firstGlyphIdx = emitFirstG,
+                                lastGlyphIdx = emitLastG,
+                                minX = clampedMinX, maxX = clampedMaxX,
+                                minY = minY, maxY = maxY
+                            });
+                        }
+                        emitFirstG = -1;
                     }
                 }
 
-                if (inGroup)
+                if (emitFirstG >= 0)
                 {
-                    var rectLeft = rect.xMin + minX;
-                    var rectBottom = rect.yMax - maxY;
-                    var width = maxX - minX;
-                    var height = maxY - minY;
-                    results.Add(new Rect(rectLeft, rectBottom, width, height));
+                    var clampedMinX = minX < contentLeft ? contentLeft : minX;
+                    var clampedMaxX = maxX > contentRight ? contentRight : maxX;
+                    if (clampedMaxX > clampedMinX)
+                    {
+                        output.Add(new LineRangeEntry
+                        {
+                            lineIdx = li,
+                            firstGlyphIdx = emitFirstG,
+                            lastGlyphIdx = emitLastG,
+                            minX = clampedMinX, maxX = clampedMaxX,
+                            minY = minY, maxY = maxY
+                        });
+                    }
+                }
+            }
+        }
+
+        private PooledList<LineRangeEntry> rangeEntriesScratch;
+
+        /// <summary>
+        /// Gets bounding rectangles for a cluster range. One <see cref="Rect"/> per contiguous run
+        /// of glyphs within a line that falls inside <c>[<paramref name="startCluster"/>, <paramref name="endCluster"/>)</c>.
+        /// Trailing whitespace at line ends is excluded (CSS Text §4.1.3). Empty wrapped lines whose
+        /// break codepoint lies inside the range receive a synthetic narrow rect for caret/selection rendering.
+        /// </summary>
+        public void GetRangeBounds(int startCluster, int endCluster, IList<Rect> results)
+        {
+            results.Clear();
+
+            if (textProcessor == null) return;
+
+            var lines = buffers.lines;
+            if (lines.count == 0) return;
+
+            rangeEntriesScratch ??= new PooledList<LineRangeEntry>(8);
+            CollectRangeEntries(startCluster, endCluster, rangeEntriesScratch);
+
+            var rect = cachedTransformData.rect;
+            var glyphs = textProcessor.PositionedGlyphs;
+            var referenceLineHeight = glyphs.Length > 0
+                ? glyphs[0].bottom - glyphs[0].top
+                : CurrentFontSize;
+
+            var entryIdx = 0;
+            var entryCount = rangeEntriesScratch.Count;
+            float prevLineBottom = 0f;
+
+            for (var li = 0; li < lines.count; li++)
+            {
+                ref readonly var line = ref lines[li];
+
+                if (line.glyphCount == 0)
+                {
+                    if (line.range.start >= startCluster && line.range.start < endCluster)
+                    {
+                        var advances = buffers.perLineAdvances;
+                        var emptyTop = prevLineBottom;
+                        var emptyH = referenceLineHeight;
+                        if (li < advances.count && advances[li] > 0)
+                            emptyH = advances[li];
+                        else if (li > 0 && li - 1 < advances.count)
+                            emptyH = advances[li - 1];
+
+                        var spaceW = emptyH * 0.25f;
+                        results.Add(new Rect(rect.xMin, rect.yMax - emptyTop - emptyH, spaceW, emptyH));
+                        prevLineBottom = emptyTop + emptyH;
+                    }
+                    continue;
                 }
 
-                glyphIndex = lineGlyphEnd;
+                while (entryIdx < entryCount && rangeEntriesScratch[entryIdx].lineIdx == li)
+                {
+                    var e = rangeEntriesScratch[entryIdx];
+                    results.Add(new Rect(rect.xMin + e.minX, rect.yMax - e.maxY, e.maxX - e.minX, e.maxY - e.minY));
+                    if (e.maxY > prevLineBottom) prevLineBottom = e.maxY;
+                    entryIdx++;
+                }
+
+                if (li + 1 < lines.count)
+                {
+                    var lineBottom = glyphs[line.glyphStart].bottom;
+                    if (lineBottom > prevLineBottom) prevLineBottom = lineBottom;
+                }
             }
         }
 
@@ -1186,11 +1434,12 @@ namespace LightSide
         private void OnSceneVisibilityChanged()
         {
             if (this == null) return;
-            var hidden = UnityEditor.SceneVisibilityManager.instance.IsHidden(gameObject);
+            var hidden = SceneVisibilityOverlay.Respect
+                         && UnityEditor.SceneVisibilityManager.instance.IsHidden(gameObject);
             if (hidden == sceneVisibilityHidden) return;
             sceneVisibilityHidden = hidden;
             if (hidden) ClearAllRenderers();
-            else SetDirty(DirtyFlags.Color);
+            else SetDirty(UniTextDirtyFlags.Color);
         }
 
         /// <summary>Style presets we subscribed to Changed event (for correct unsubscription).</summary>

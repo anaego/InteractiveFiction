@@ -69,7 +69,6 @@ namespace LightSide
         /// <summary>Gets the priority for overlap resolution. Higher values win.</summary>
         public virtual int Priority => 0;
 
-        /// <summary>Gets the attribute key for storing ranges.</summary>
         protected virtual string AttributeKey => $"interactive_{RangeType}";
 
         /// <inheritdoc/>

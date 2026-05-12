@@ -404,7 +404,8 @@ namespace LightSide
             out float totalAdvanceOut,
             HB.hb_variation_t[] variations = null,
             HB.hb_feature_t[] features = null,
-            int featureCount = -1)
+            int featureCount = -1,
+            IntPtr language = default)
         {
             totalAdvanceOut = 0;
 
@@ -414,7 +415,7 @@ namespace LightSide
 #if UNITY_WEBGL && !UNITY_EDITOR
             if (fontId == EmojiFont.FontId)
             {
-                var result = WebGLEmojiShaper.Shape(context.Slice(itemOffset, itemLength), fontProvider.FontSize, 2048);
+                var result = WebGLEmojiShaper.Shape(context.Slice(itemOffset, itemLength), fontProvider.FontSize, 2048, itemOffset);
                 var glyphs = result.Glyphs;
                 var emojiStart = output.count;
                 output.EnsureCapacity(emojiStart + glyphs.Length);
@@ -468,6 +469,7 @@ namespace LightSide
                 context, itemOffset, itemLength,
                 direction == TextDirection.RightToLeft ? HB.DIRECTION_RTL : HB.DIRECTION_LTR,
                 MapScript(script),
+                language,
                 HB.BUFFER_FLAG_REMOVE_DEFAULT_IGNORABLES,
                 features, fCount,
                 out var nativeInfos, out var nativePositions);

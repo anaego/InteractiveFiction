@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: e0643eebb670de24ea739c6fe83ac7e1
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/StyleCore/Rules/BackslashEscapeRule.cs
+  uploadId: 908872

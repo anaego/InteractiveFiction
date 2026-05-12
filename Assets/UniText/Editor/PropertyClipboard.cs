@@ -379,8 +379,7 @@ namespace LightSide
                     data = prop.enumValueIndex.ToString();
                     return true;
                 case SerializedPropertyType.ObjectReference:
-                    var obj = prop.objectReferenceValue;
-                    data = obj != null ? obj.GetInstanceID().ToString() : "0";
+                    data = ObjectRefCompat.Serialize(prop.objectReferenceValue);
                     return true;
                 case SerializedPropertyType.Color:
                     var c = prop.colorValue;
@@ -434,8 +433,7 @@ namespace LightSide
                         child.enumValueIndex = int.Parse(leaf.data);
                         break;
                     case SerializedPropertyType.ObjectReference:
-                        var id = int.Parse(leaf.data);
-                        child.objectReferenceValue = id != 0 ? EditorUtility.InstanceIDToObject(id) : null;
+                        child.objectReferenceValue = ObjectRefCompat.Deserialize(leaf.data);
                         break;
                     case SerializedPropertyType.ManagedReference:
                     {

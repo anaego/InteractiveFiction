@@ -4,9 +4,11 @@
 Shader "UniText/Emoji" {
 
 Properties {
-	_MainTex			("Emoji Atlas", 2DArray) = "" {}
+	[HideInInspector] _MainTex ("Emoji Atlas", 2DArray) = "" {}
 
 	_ClipRect			("Clip Rect", vector) = (-32767, -32767, 32767, 32767)
+	_MaskSoftnessX		("Mask SoftnessX", float) = 0
+	_MaskSoftnessY		("Mask SoftnessY", float) = 0
 
 	_StencilComp		("Stencil Comparison", Float) = 8
 	_Stencil			("Stencil ID", Float) = 0
@@ -57,6 +59,10 @@ SubShader {
 
 		UNITY_DECLARE_TEX2DARRAY(_MainTex);
 		float4 _ClipRect;
+		float _MaskSoftnessX;
+		float _MaskSoftnessY;
+		float _UIMaskSoftnessX;
+		float _UIMaskSoftnessY;
 
 		struct appdata
 		{
@@ -73,7 +79,7 @@ SubShader {
 			float4 vertex    : SV_POSITION;
 			fixed4 color     : COLOR;
 			float3 atlasUV   : TEXCOORD0;
-			float4 worldPos  : TEXCOORD1;
+			half4  mask      : TEXCOORD1;
 		};
 
 		v2f vert(appdata v)
@@ -85,11 +91,16 @@ SubShader {
 			UNITY_TRANSFER_INSTANCE_ID(v, o);
 			UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
-			o.worldPos = v.vertex;
-			o.vertex = UnityObjectToClipPos(v.vertex);
+			float4 vPosition = UnityObjectToClipPos(v.vertex);
+			o.vertex = vPosition;
 			o.color = v.color;
 			o.color.rgb *= o.color.a;
 			o.atlasUV = v.texcoord.xyz;
+
+			float2 pixelSize = vPosition.w / abs(mul((float2x2)UNITY_MATRIX_P, _ScreenParams.xy));
+			half2 maskSoftness = half2(max(_UIMaskSoftnessX, _MaskSoftnessX), max(_UIMaskSoftnessY, _MaskSoftnessY));
+			float4 clampedRect = clamp(_ClipRect, -2e10, 2e10);
+			o.mask = half4(v.vertex.xy * 2 - clampedRect.xy - clampedRect.zw, 0.25 / (0.25 * maskSoftness + abs(pixelSize.xy)));
 
 			return o;
 		}
@@ -102,7 +113,8 @@ SubShader {
 			col *= i.color;
 
 			#ifdef UNITY_UI_CLIP_RECT
-			col.a *= UnityGet2DClipping(i.worldPos.xy, _ClipRect);
+			half2 m = saturate((_ClipRect.zw - _ClipRect.xy - abs(i.mask.xy)) * i.mask.zw);
+			col *= m.x * m.y;
 			#endif
 
 			#ifdef UNITY_UI_ALPHACLIP

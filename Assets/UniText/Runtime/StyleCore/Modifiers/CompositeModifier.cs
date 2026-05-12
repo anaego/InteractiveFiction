@@ -42,7 +42,15 @@ namespace LightSide
             }
         }
 
-        protected override void OnDisable() { }
+        protected override void OnDisable()
+        {
+            for (var i = 0; i < modifiers.Count; i++)
+            {
+                var mod = modifiers[i];
+                if (mod != null && mod.IsInitialized)
+                    mod.Disable();
+            }
+        }
 
         protected override void OnDestroy()
         {

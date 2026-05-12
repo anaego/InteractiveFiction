@@ -522,6 +522,23 @@ namespace LightSide
         }
 
         /// <summary>
+        /// Clears the entire backing array (not just <c>[0..count)</c>) and resets count to zero.
+        /// </summary>
+        /// <remarks>
+        /// Use this when elements are written via direct <see cref="data"/> indexing without
+        /// updating <see cref="count"/> — a pattern used by modifiers whose buffer is read by
+        /// <c>TextProcessor</c> at arbitrary indices. <see cref="Clear"/> and <see cref="ClearData"/>
+        /// only scrub <c>[0..count)</c> which is a no-op for such modifiers when count is zero.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void ClearAll()
+        {
+            if (data != null && data.Length > 0)
+                Array.Clear(data, 0, data.Length);
+            count = 0;
+        }
+
+        /// <summary>
         /// Ensures the buffer has at least the specified capacity, growing if needed.
         /// </summary>
         /// <param name="required">The minimum required capacity.</param>
@@ -731,6 +748,10 @@ namespace LightSide
         /// <inheritdoc cref="PooledBuffer{T}.FakeClear"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void FakeClear() => buffer.FakeClear();
+
+        /// <inheritdoc cref="PooledBuffer{T}.ClearAll"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void ClearAll() => buffer.ClearAll();
 
         /// <inheritdoc cref="PooledBuffer{T}.Return"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

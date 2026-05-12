@@ -38,7 +38,6 @@ namespace LightSide
 
         [ThreadStatic] private static HashSet<int> searchedFontAssets;
 
-        /// <summary>Flattened family array from entire fallback chain.</summary>
         private FontFamily[] resolvedFamilies;
 
         /// <summary>fontId → familyIndex mapping for O(1) family lookup.</summary>
@@ -162,6 +161,35 @@ namespace LightSide
         }
 
         /// <summary>
+        /// Tries to resolve a fontId to its registered <see cref="UniTextFont"/> without falling back
+        /// to the primary font. Use this when the caller must distinguish "registered" from "unknown" —
+        /// e.g. coverage checks for explicit font overrides where silently substituting primary would
+        /// mask incorrect attribute data.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool TryGetFontAsset(int fontId, out UniTextFont font)
+        {
+            if (fontId == prinaryFontId)
+            {
+                font = primaryFont;
+                return true;
+            }
+
+            if (fontId == EmojiFont.FontId)
+            {
+                if (EmojiFont.IsAvailable)
+                {
+                    font = EmojiFont.Instance;
+                    return true;
+                }
+                font = null;
+                return false;
+            }
+
+            return fontAssets.TryGetValue(fontId, out font);
+        }
+
+        /// <summary>
         /// Gets line metrics scaled to the specified font size.
         /// </summary>
         /// <param name="size">Target font size in points.</param>
@@ -195,13 +223,42 @@ namespace LightSide
         }
 
         /// <summary>
+        /// Resolves a <see cref="FontFamily.name"/> to its primary font's fontId, registering the
+        /// font with this provider if needed. Returns <c>0</c> when the name is empty or unknown.
+        /// </summary>
+        public int TryGetFontIdByFamilyName(string name)
+        {
+            if (string.IsNullOrEmpty(name) || fontStackAsset == null)
+                return 0;
+
+            if (!fontStackAsset.TryGetFamilyByName(name, out var family))
+                return 0;
+
+            var primary = family.primary;
+            if (primary == null) return 0;
+
+            var fontId = GetFontId(primary);
+            if (!fontAssets.ContainsKey(fontId))
+                RegisterFontAsset(fontId, primary);
+            return fontId;
+        }
+
+        /// <summary>
         /// Finds the best font to render a codepoint, using fallback chain if needed.
         /// </summary>
         /// <param name="codepoint">Unicode codepoint to find a font for.</param>
         /// <returns>Font ID of the font that can render this codepoint.</returns>
-        public int FindFontForCodepoint(int codepoint)
+        public int FindFontForCodepoint(int codepoint) => FindFontForCodepoint(codepoint, 0);
+
+        /// <summary>
+        /// Finds the best font to render a codepoint given a language tag registry index.
+        /// Prefers families whose <see cref="FontFamily.preferredLanguage"/> matches the tag.
+        /// </summary>
+        /// <param name="codepoint">Unicode codepoint to find a font for.</param>
+        /// <param name="language">Language registry index, or 0 for unset.</param>
+        public int FindFontForCodepoint(int codepoint, byte language)
         {
-            if (SharedFontCache.TryGet(codepoint, prinaryFontId, out var cachedFontId))
+            if (SharedFontCache.TryGet(codepoint, prinaryFontId, language, out var cachedFontId))
             {
                 if (cachedFontId == prinaryFontId || fontAssets.ContainsKey(cachedFontId))
                     return cachedFontId;
@@ -213,7 +270,8 @@ namespace LightSide
             searchedFontAssets.Clear();
 
             var unicode = (uint)codepoint;
-            var foundFont = fontStackAsset?.FindFontForCodepoint(unicode, searchedFontAssets);
+            var languageTag = language != 0 ? LanguageRegistry.GetTag(language) : null;
+            var foundFont = fontStackAsset?.FindFontForCodepoint(unicode, languageTag, searchedFontAssets);
 
             if (foundFont == null)
                 return prinaryFontId;
@@ -225,7 +283,7 @@ namespace LightSide
                 Cat.MeowFormat("[FontProvider] Fallback font registered: {0}", foundFont.CachedName);
             }
 
-            SharedFontCache.Set(codepoint, prinaryFontId, fontId);
+            SharedFontCache.Set(codepoint, prinaryFontId, language, fontId);
             return fontId;
         }
 
@@ -238,9 +296,6 @@ namespace LightSide
             return fontIdToFamilyIndex.TryGetValue(fontId, out var idx) ? idx : (ushort)0;
         }
 
-        /// <summary>
-        /// Gets the family lookup table for the given family index.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ref FontFaceLookup GetFamilyLookup(ushort familyIndex)
         {

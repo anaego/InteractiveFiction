@@ -13,6 +13,11 @@ namespace LightSide
     [Serializable]
     [TypeGroup("Decoration", 1)]
     [TypeDescription("Draws a line beneath the text.")]
+    [ParameterField(0, "Thickness", "unit:px|em", "auto")]
+    [ParameterField(1, "Offset", "unit:px|em", "auto")]
+    [ParameterField(2, "Style", "enum:solid|double|dotted|dashed|wavy", "solid")]
+    [ParameterField(3, "Skip Ink", "bool", "false")]
+    [ParameterField(4, "Overlay", "bool", "false")]
     public class UnderlineModifier : BaseLineModifier
     {
         protected override string AttributeKey => AttributeKeys.Underline;
@@ -21,10 +26,5 @@ namespace LightSide
         {
             return faceInfo.underlineOffset * scale;
         }
-
-        protected override void SetStaticBuffer(byte[] buf)
-        {
-        }
     }
-
 }

@@ -160,7 +160,8 @@ namespace LightSide
 
         private void OnGlyph()
         {
-            var gen = UniTextMeshGenerator.Current;
+            var gen = uniText.MeshGenerator;
+            if (gen.isVirtualGlyph) return;
             var cluster = gen.currentCluster;
 
             if ((uint)cluster >= (uint)attribute.buffer.Capacity)
@@ -182,7 +183,7 @@ namespace LightSide
                 rawOffset = isSuper ? (int)(upem * 0.35f) : (int)(upem * 0.12f);
             var offset = (isSuper ? 1f : -1f) * (rawOffset / upem * fontSize);
 
-            UniTextMeshGenerator.ScaleGlyphQuad(gen.Vertices, gen.vertexCount - 4, gen.baselineY, scale, offset);
+            UniTextMeshGenerator.ScaleGlyphQuad(gen.Vertices, gen.faceBaseIdx, gen.cursorX, gen.baselineY, scale, offset);
         }
 
         private static float GetScale(UniTextFont font, bool isSuper)

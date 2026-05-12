@@ -129,6 +129,16 @@ namespace LightSide
             hb_feature_t* features, uint numFeatures,
             hb_glyph_info_t** outInfos, hb_glyph_position_t** outPositions);
 
+        [DllImport(LibraryName, CallingConvention = Cdecl)] private static extern IntPtr ut_hb_language_from_string(byte* str, int len);
+        [DllImport(LibraryName, CallingConvention = Cdecl)] private static extern void ut_hb_buffer_set_language(IntPtr buffer, IntPtr language);
+        [DllImport(LibraryName, CallingConvention = Cdecl)] private static extern unsafe int ut_hb_shape_run_lang(
+            IntPtr font, IntPtr buffer,
+            uint* codepoints, int textLength,
+            uint itemOffset, int itemLength,
+            int direction, uint scriptTag, IntPtr language, uint flags,
+            hb_feature_t* features, uint numFeatures,
+            hb_glyph_info_t** outInfos, hb_glyph_position_t** outPositions);
+
         [DllImport(LibraryName, CallingConvention = Cdecl)] private static extern uint ut_hb_ot_var_get_axis_count(IntPtr face);
         [DllImport(LibraryName, CallingConvention = Cdecl)] private static extern uint ut_hb_ot_var_get_axis_infos(IntPtr face, uint startOffset, ref uint axesCount, hb_ot_var_axis_info_t* axesInfo);
         [DllImport(LibraryName, CallingConvention = Cdecl)] private static extern void ut_hb_font_set_variations(IntPtr font, hb_variation_t* variations, uint variationsLength);
@@ -266,6 +276,32 @@ namespace LightSide
             ut_hb_buffer_set_script(buffer, script);
         }
 
+        /// <summary>
+        /// Converts a BCP 47 language tag string to an opaque hb_language_t handle.
+        /// HarfBuzz canonicalizes the string and caches it, so returned pointers for equal
+        /// strings are equal. The handle is valid for the process lifetime.
+        /// </summary>
+        public static IntPtr LanguageFromString(string bcp47)
+        {
+            if (string.IsNullOrEmpty(bcp47)) return IntPtr.Zero;
+
+            var byteCount = System.Text.Encoding.ASCII.GetByteCount(bcp47);
+            Span<byte> buffer = stackalloc byte[byteCount];
+            System.Text.Encoding.ASCII.GetBytes(bcp47, buffer);
+
+            fixed (byte* ptr = buffer)
+            {
+                return ut_hb_language_from_string(ptr, byteCount);
+            }
+        }
+
+        /// <summary>Sets the language on a HarfBuzz buffer. Must be called before Shape.</summary>
+        public static void SetLanguage(IntPtr buffer, IntPtr language)
+        {
+            if (buffer == IntPtr.Zero) return;
+            ut_hb_buffer_set_language(buffer, language);
+        }
+
         public static void SetFlags(IntPtr buffer, uint flags)
         {
             if (buffer == IntPtr.Zero) return;
@@ -340,6 +376,22 @@ namespace LightSide
             hb_feature_t[] features, int featureCount,
             out hb_glyph_info_t* outInfos, out hb_glyph_position_t* outPositions)
         {
+            return ShapeRun(font, buffer, codepoints, itemOffset, itemLength,
+                direction, scriptTag, IntPtr.Zero, flags, features, featureCount,
+                out outInfos, out outPositions);
+        }
+
+        /// <summary>
+        /// Batched shape call with explicit language tag. IntPtr.Zero language activates the
+        /// old fast path without language, preserving behavior for callers that don't need locl.
+        /// </summary>
+        public static unsafe int ShapeRun(
+            IntPtr font, IntPtr buffer,
+            ReadOnlySpan<int> codepoints, int itemOffset, int itemLength,
+            int direction, uint scriptTag, IntPtr language, uint flags,
+            hb_feature_t[] features, int featureCount,
+            out hb_glyph_info_t* outInfos, out hb_glyph_position_t* outPositions)
+        {
             if (font == IntPtr.Zero || buffer == IntPtr.Zero)
             {
                 outInfos = null;
@@ -353,30 +405,61 @@ namespace LightSide
                 hb_glyph_position_t* positions;
 
                 var fCount = featureCount > 0 ? (uint)featureCount : 0u;
+                var hasFeatures = fCount > 0 && features != null;
 
                 int glyphCount;
-                if (fCount > 0 && features != null)
+
+                if (language == IntPtr.Zero)
                 {
-                    fixed (hb_feature_t* fPtr = features)
+                    if (hasFeatures)
+                    {
+                        fixed (hb_feature_t* fPtr = features)
+                        {
+                            glyphCount = ut_hb_shape_run(
+                                font, buffer,
+                                (uint*)cpPtr, codepoints.Length,
+                                (uint)itemOffset, itemLength,
+                                direction, scriptTag, flags,
+                                fPtr, fCount,
+                                &infos, &positions);
+                        }
+                    }
+                    else
                     {
                         glyphCount = ut_hb_shape_run(
                             font, buffer,
                             (uint*)cpPtr, codepoints.Length,
                             (uint)itemOffset, itemLength,
                             direction, scriptTag, flags,
-                            fPtr, fCount,
+                            null, 0,
                             &infos, &positions);
                     }
                 }
                 else
                 {
-                    glyphCount = ut_hb_shape_run(
-                        font, buffer,
-                        (uint*)cpPtr, codepoints.Length,
-                        (uint)itemOffset, itemLength,
-                        direction, scriptTag, flags,
-                        null, 0,
-                        &infos, &positions);
+                    if (hasFeatures)
+                    {
+                        fixed (hb_feature_t* fPtr = features)
+                        {
+                            glyphCount = ut_hb_shape_run_lang(
+                                font, buffer,
+                                (uint*)cpPtr, codepoints.Length,
+                                (uint)itemOffset, itemLength,
+                                direction, scriptTag, language, flags,
+                                fPtr, fCount,
+                                &infos, &positions);
+                        }
+                    }
+                    else
+                    {
+                        glyphCount = ut_hb_shape_run_lang(
+                            font, buffer,
+                            (uint*)cpPtr, codepoints.Length,
+                            (uint)itemOffset, itemLength,
+                            direction, scriptTag, language, flags,
+                            null, 0,
+                            &infos, &positions);
+                    }
                 }
 
                 outInfos = infos;

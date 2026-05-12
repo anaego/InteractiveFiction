@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: ee6e2c4b1aee35145b654262ac5a971f
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/InlineGradientProvider.cs
+  uploadId: 908872

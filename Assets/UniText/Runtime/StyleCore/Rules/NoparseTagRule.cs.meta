@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 64f96b73a7c228f429cd7b34c4bb04c4
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/StyleCore/Rules/NoparseTagRule.cs
+  uploadId: 908872

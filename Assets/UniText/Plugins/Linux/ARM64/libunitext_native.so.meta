@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: ac3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f
+guid: 474b65a73149472f98b4e884c4813eb2
 PluginImporter:
   externalObjects: {}
   serializedVersion: 3
@@ -46,6 +46,6 @@ AssetOrigin:
   serializedVersion: 1
   productId: 357844
   packageName: UniText
-  packageVersion: 2.0.0
+  packageVersion: 2.1.5
   assetPath: Assets/UniText/Plugins/Linux/ARM64/libunitext_native.so
-  uploadId: 895842
+  uploadId: 908872

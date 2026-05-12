@@ -77,7 +77,7 @@ namespace LightSide
 
         private void OnGlyph()
         {
-            var gen = UniTextMeshGenerator.Current;
+            var gen = uniText.MeshGenerator;
             var cluster = gen.currentCluster;
             var paramIndex = attribute.buffer.data[cluster];
             if (paramIndex == 0) return;
@@ -85,7 +85,7 @@ namespace LightSide
             ref readonly var p = ref paramSets[paramIndex - 1];
             var offset = Mathf.Sin(cachedTime * p.speed + cluster * p.spread) * p.amplitude;
 
-            var baseIdx = gen.vertexCount - 4;
+            var baseIdx = gen.faceBaseIdx;
             var verts = gen.Vertices;
             verts[baseIdx].y += offset;
             verts[baseIdx + 1].y += offset;
@@ -96,7 +96,7 @@ namespace LightSide
         private void OnAfterProcess()
         {
             if (hasAnyWobble)
-                uniText.SetDirty(UniTextBase.DirtyFlags.Color);
+                uniText.SetDirty(UniTextDirtyFlags.Color);
         }
 
         private static void ParseParameters(string parameter, out float amp, out float spd, out float spr)

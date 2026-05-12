@@ -14,6 +14,11 @@ namespace LightSide
     [Serializable]
     [TypeGroup("Decoration", 1)]
     [TypeDescription("Draws a line through the middle of the text.")]
+    [ParameterField(0, "Thickness", "unit:px|em", "auto")]
+    [ParameterField(1, "Offset", "unit:px|em", "auto")]
+    [ParameterField(2, "Style", "enum:solid|double|dotted|dashed|wavy", "solid")]
+    [ParameterField(3, "Skip Ink", "bool", "false")]
+    [ParameterField(4, "Overlay", "bool", "false")]
     public class StrikethroughModifier : BaseLineModifier
     {
         protected override string AttributeKey => AttributeKeys.Strikethrough;
@@ -29,9 +34,5 @@ namespace LightSide
             return xHeightMid * scale;
         }
 
-        protected override void SetStaticBuffer(byte[] buf)
-        {
-        }
     }
-
 }

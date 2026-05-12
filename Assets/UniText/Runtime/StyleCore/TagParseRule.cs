@@ -29,7 +29,6 @@ namespace LightSide
             public string parameter;
         }
 
-        /// <summary>Gets the tag name to match (e.g., "b" for &lt;b&gt;).</summary>
         protected abstract string TagName { get; }
 
         public void Reset()

@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: df32c253c467bed489f10a44e636ff36
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/Core/Component/UniTextBase_Animation.cs
+  uploadId: 908872

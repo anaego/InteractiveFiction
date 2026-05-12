@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: af8080b32d0c59948a98efa317114775
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/Core/LanguageRegistry.cs
+  uploadId: 908872

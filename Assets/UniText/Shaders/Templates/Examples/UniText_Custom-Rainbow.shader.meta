@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 7a2c1ffe664750347b19111b28fb87ba
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Shaders/Templates/Examples/UniText_Custom-Rainbow.shader
+  uploadId: 908872

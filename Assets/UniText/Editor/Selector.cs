@@ -18,6 +18,8 @@ namespace LightSide
             public Texture groupIcon;
             public string description;
             public object value;
+            /// <summary>Optional renderer drawn in a fixed-width column on the right side of the row (e.g. gradient/color preview).</summary>
+            public Action<Rect> rightDecorator;
         }
 
         private sealed class GroupNode
@@ -65,12 +67,15 @@ namespace LightSide
         private const float SeparatorHeight = 1f;
         private const float WindowPadding = 2f;
         private const float IconSize = 16f;
-        private const int MaxVisibleItems = 15;
         private const float MinWidth = 200f;
+        private const float MinHeight = 120f;
+        private const float ScreenEdgePadding = 20f;
         private const float CheckmarkWidth = 20f;
         private const float SubmenuWidth = 220f;
         private const float ArrowWidth = 20f;
         private const float InlineIndent = 16f;
+        private const float RightDecoratorWidth = 72f;
+        private const float RightDecoratorPadding = 4f;
 
         private static GUIStyle itemStyle;
         private static GUIStyle itemSelectedStyle;
@@ -99,17 +104,32 @@ namespace LightSide
             var width = Mathf.Max(buttonRect.width, MinWidth);
             window.baseWidth = width;
 
+            var screenRect = GUIUtility.GUIToScreenRect(buttonRect);
+            var maxAllowed = CalculateMaxAllowedHeight(screenRect.yMax);
+
             var visibleCount = window.CountInitialVisibleItems();
-            var contentHeight = Mathf.Min(visibleCount, MaxVisibleItems) * ItemHeight;
-            var height = (showSearch ? SearchHeight : 0) + contentHeight + WindowPadding * 2 + 4;
+            var desiredContent = visibleCount * ItemHeight;
+            var chrome = ChromeHeight(showSearch);
+            var height = Mathf.Clamp(desiredContent + chrome, MinHeight, maxAllowed);
             window.baseHeight = height;
 
             var totalWidth = window.hasAnyGroups ? width + SubmenuWidth : width;
 
-            var screenRect = GUIUtility.GUIToScreenRect(buttonRect);
             window.position = new Rect(screenRect.x, screenRect.yMax, totalWidth, height);
             window.ShowPopup();
             window.Focus();
+        }
+
+        private static float ChromeHeight(bool showSearch)
+        {
+            return (showSearch ? SearchHeight : 0) + WindowPadding * 2 + 4;
+        }
+
+        private static float CalculateMaxAllowedHeight(float windowTopY)
+        {
+            var screenH = Screen.currentResolution.height;
+            var avail = screenH - windowTopY - ScreenEdgePadding;
+            return avail > MinHeight ? avail : 600f;
         }
 
         internal static void ShowForEnum<T>(Rect rect, T currentValue, Action<T> onSelected) where T : Enum
@@ -372,7 +392,7 @@ namespace LightSide
                             DoSelect(capturedValue);
                         else
                             SelectItem(capturedIdx);
-                    });
+                    }, item.rightDecorator);
 
                 y += ItemHeight;
             }
@@ -437,7 +457,7 @@ namespace LightSide
                         var capturedValue = item.value;
 
                         DrawSelectableItem(itemRect, item.displayName, item.icon, isCurrent,
-                            false, IsHovered(itemRect), () => DoSelect(capturedValue));
+                            false, IsHovered(itemRect), () => DoSelect(capturedValue), item.rightDecorator);
 
                         y += ItemHeight;
                     }
@@ -468,6 +488,7 @@ namespace LightSide
                                 expandedGroups.Remove(nestedKey);
                             else
                                 expandedGroups.Add(nestedKey);
+                            RecalculateHeight();
                             Event.current.Use();
                         }
 
@@ -485,7 +506,7 @@ namespace LightSide
                                 var nCapturedValue = nItem.value;
 
                                 DrawSelectableItem(nItemRect, nItem.displayName, nItem.icon, nIsCurrent,
-                                    false, IsHovered(nItemRect), () => DoSelect(nCapturedValue));
+                                    false, IsHovered(nItemRect), () => DoSelect(nCapturedValue), nItem.rightDecorator);
 
                                 y += ItemHeight;
                             }
@@ -564,9 +585,10 @@ namespace LightSide
             submenuItems = items;
             submenuScrollPos = Vector2.zero;
 
-            var submenuContentHeight = Mathf.Min(items.Length, MaxVisibleItems) * ItemHeight;
-            var submenuNeededHeight = SearchHeight + submenuContentHeight + WindowPadding * 2 + 4;
-            var neededHeight = Mathf.Max(baseHeight, submenuNeededHeight);
+            var maxAllowed = CalculateMaxAllowedHeight(position.y);
+            var submenuContentHeight = items.Length * ItemHeight;
+            var submenuNeededHeight = submenuContentHeight + ChromeHeight(showSearchField);
+            var neededHeight = Mathf.Clamp(Mathf.Max(baseHeight, submenuNeededHeight), MinHeight, maxAllowed);
 
             if (Mathf.Abs(position.height - neededHeight) > 1f)
             {
@@ -674,7 +696,7 @@ namespace LightSide
                 var capturedValue = item.value;
 
                 DrawSelectableItem(itemRect, item.displayName, item.icon, isCurrent,
-                    false, IsHovered(itemRect), () => DoSelect(capturedValue));
+                    false, IsHovered(itemRect), () => DoSelect(capturedValue), item.rightDecorator);
 
                 y += ItemHeight;
             }
@@ -776,12 +798,31 @@ namespace LightSide
                     expandedGroups.Remove(groupIndex);
                 else
                     expandedGroups.Add(groupIndex);
+                RecalculateHeight();
                 return;
             }
 
             selectedGroupIndex = groupIndex;
             selectedItemIndex = -1;
             OpenSubmenu(groupIndex, sub);
+        }
+
+        private void RecalculateHeight()
+        {
+            var groupedContentHeight = CalculateGroupedTotalHeight(rootNode);
+            var submenuContentHeight = submenuItems != null ? submenuItems.Length * ItemHeight : 0f;
+            var contentHeight = Mathf.Max(groupedContentHeight, submenuContentHeight);
+
+            var maxAllowed = CalculateMaxAllowedHeight(position.y);
+            var desired = contentHeight + ChromeHeight(showSearchField);
+            var height = Mathf.Clamp(desired, MinHeight, maxAllowed);
+
+            if (Mathf.Abs(position.height - height) > 1f)
+            {
+                var pos = position;
+                pos.height = height;
+                position = pos;
+            }
         }
 
         private void DoSelect(object value)
@@ -868,7 +909,7 @@ namespace LightSide
                 var capturedValue = item.value;
 
                 DrawSelectableItem(itemRect, item.displayName, item.icon, isCurrent,
-                    isSelected, IsHovered(itemRect), () => DoSelect(capturedValue));
+                    isSelected, IsHovered(itemRect), () => DoSelect(capturedValue), item.rightDecorator);
 
                 y += ItemHeight;
             }
@@ -934,7 +975,7 @@ namespace LightSide
         private static readonly Color selectedColor = new(0.24f, 0.49f, 0.91f, 0.5f);
 
         private void DrawSelectableItem(Rect rect, string label, Texture icon, bool isCurrent,
-            bool selected, bool hovered, Action onClick)
+            bool selected, bool hovered, Action onClick, Action<Rect> rightDecorator = null)
         {
             if (selected)
                 EditorGUI.DrawRect(rect, selectedColor);
@@ -961,9 +1002,22 @@ namespace LightSide
                 x += IconSize + 2;
             }
 
+            var rightAreaWidth = rightDecorator != null ? RightDecoratorWidth + RightDecoratorPadding : 0f;
+            var labelWidth = Mathf.Max(0f, rect.xMax - x - rightAreaWidth);
+
             var highlight = selected || hovered;
-            GUI.Label(new Rect(x, rect.y, rect.width - x, rect.height), label,
+            GUI.Label(new Rect(x, rect.y, labelWidth, rect.height), label,
                 highlight ? itemSelectedStyle : itemStyle);
+
+            if (rightDecorator != null)
+            {
+                var decoRect = new Rect(
+                    rect.xMax - RightDecoratorWidth - RightDecoratorPadding,
+                    rect.y + 3,
+                    RightDecoratorWidth,
+                    rect.height - 6);
+                rightDecorator(decoRect);
+            }
         }
 
         private static bool IsHovered(Rect rect)

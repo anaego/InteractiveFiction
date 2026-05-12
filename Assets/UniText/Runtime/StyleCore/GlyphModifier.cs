@@ -22,10 +22,8 @@ namespace LightSide
     [Serializable]
     public abstract class GlyphModifier<T> : BaseModifier where T : unmanaged
     {
-        /// <summary>The pooled attribute array for per-glyph data.</summary>
         protected PooledArrayAttribute<T> attribute;
 
-        /// <summary>Gets the unique key for this attribute in the buffer system.</summary>
         protected abstract string AttributeKey { get; }
 
         private Action cachedOnGlyph;
@@ -59,9 +57,6 @@ namespace LightSide
             attribute = null;
         }
 
-        /// <summary>
-        /// Called by BaseModifier.Apply(). Delegates to DoApply.
-        /// </summary>
         protected sealed override void OnApply(int start, int end, string parameter)
         {
             DoApply(start, end, parameter);
@@ -76,7 +71,6 @@ namespace LightSide
         /// <param name="parameter">Parameter from the tag.</param>
         protected abstract void DoApply(int start, int end, string parameter);
 
-        /// <summary>Returns the callback to invoke during glyph mesh generation.</summary>
         protected abstract Action GetOnGlyphCallback();
 
         /// <summary>

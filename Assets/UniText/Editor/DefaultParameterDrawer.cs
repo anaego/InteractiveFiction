@@ -12,6 +12,13 @@ namespace LightSide
             var modifierProp = ParameterFieldUtility.FindModifierProperty(property);
             if (modifierProp == null) return;
 
+            if (ParameterFieldUtility.TryDetectModifierTypeChanged(property, modifierProp, out var newDefault)
+                && !string.IsNullOrEmpty(property.stringValue))
+            {
+                property.stringValue = newDefault;
+                property.serializedObject.ApplyModifiedProperties();
+            }
+
             var modType = modifierProp.managedReferenceValue?.GetType();
 
             if (modType == typeof(CompositeModifier))

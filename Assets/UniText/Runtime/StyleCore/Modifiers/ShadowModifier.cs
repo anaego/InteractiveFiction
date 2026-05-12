@@ -4,12 +4,13 @@ using UnityEngine;
 namespace LightSide
 {
     /// <summary>
-    /// Applies a shadow effect via a dedicated Base-pass CanvasRenderer.
+    /// Applies a shadow effect by appending displaced duplicate glyph geometry behind the face.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Shadow offset is applied via mesh vertex displacement. Each instance gets its own
-    /// CanvasRenderer, enabling unlimited stacking of shadow/outline effects.
+    /// The shadow is rendered via a duplicate quad offset from the face and tagged with effect
+    /// UV data. All shadow modifiers render in the same CanvasRenderer as the face (back-first
+    /// in the index buffer), enabling unlimited stacking with no extra submeshes.
     /// </para>
     /// <para>
     /// All parameters come from the tag/rule parameter string.
@@ -38,7 +39,7 @@ namespace LightSide
             public int start;
             public int end;
             public float dilate;
-            public float packedColor;
+            public Vector2 packedColor;
             public float offsetX;
             public float offsetY;
             public float softness;
@@ -47,8 +48,6 @@ namespace LightSide
         private PooledBuffer<EffectRange> ranges;
         private bool isWorldText;
         private Quaternion inverseRotation;
-
-        protected override bool HasVertexShifts() => true;
 
         protected override void OnEnable()
         {
@@ -59,7 +58,6 @@ namespace LightSide
 
         public override void PrepareForParallel()
         {
-            base.PrepareForParallel();
             if (isWorldText)
                 inverseRotation = Quaternion.Inverse(uniText.transform.rotation);
         }
@@ -95,7 +93,9 @@ namespace LightSide
 
         protected override void OnGlyphEffect()
         {
-            var gen = UniTextMeshGenerator.Current;
+            var gen = uniText.MeshGenerator;
+            if (gen.font.IsColor) return;
+
             var cluster = gen.currentCluster;
             var count = ranges.count;
             var data = ranges.data;
@@ -105,10 +105,12 @@ namespace LightSide
                 ref var range = ref data[i];
                 if (cluster < range.start || cluster >= range.end) continue;
 
-                var baseIdx = gen.vertexCount - 4;
+                var baseIdx = gen.faceBaseIdx;
                 var glyphH = gen.Uvs0[baseIdx].w;
+                if (glyphH < 1e-6f) return;
+
                 var faceDilate = gen.Uvs1[baseIdx].y;
-                var uvToObj = glyphH * gen.fontMetricFactor;
+                var padGlyph = GlyphAtlas.Pad / glyphH;
 
                 float dilate, softness, meshOffX, meshOffY;
 
@@ -136,20 +138,21 @@ namespace LightSide
                     meshOffY = localDir.y;
                 }
 
-                var extent = (faceDilate + dilate) * GlyphAtlas.Pad / glyphH + softness / glyphH;
-                if (meshOffX != 0f || meshOffY != 0f)
-                {
-                    var invUvToObj = 1f / uvToObj;
-                    extent += Mathf.Max(Mathf.Abs(meshOffX), Mathf.Abs(meshOffY)) * invUvToObj;
-                }
+                var extent = (faceDilate + dilate) * padGlyph + softness / glyphH;
+                var effectiveExtent = extent < padGlyph ? extent : padGlyph;
+                if (effectiveExtent > gen.currentMaxGlyphExtent)
+                    gen.currentMaxGlyphExtent = effectiveExtent;
 
-                RecordEffectGlyph(new EffectGlyph
-                {
-                    baseIdx = baseIdx,
-                    effectUv = new Vector4(dilate, range.packedColor, 0f, softness),
-                    offsetX = meshOffX,
-                    offsetY = meshOffY
-                }, extent);
+                var currentPad = UniTextMeshGenerator.DefaultSdfPadding;
+                var facePad = faceDilate * padGlyph;
+                if (facePad > currentPad) currentPad = facePad;
+                var delta = effectiveExtent - currentPad;
+
+                EnqueueEffectQuad(
+                    baseIdx,
+                    new Vector4(dilate, range.packedColor.x, range.packedColor.y, softness),
+                    meshOffX, meshOffY,
+                    expandDelta: delta > 0f ? delta : 0f);
                 return;
             }
         }

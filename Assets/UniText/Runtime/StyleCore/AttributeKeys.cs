@@ -16,5 +16,7 @@ namespace LightSide
         public const string Variation = "variation";
         public const string SmallCaps = "smallcaps";
         public const string ScriptPosition = "scriptPosition";
+        public const string Language = "language";
+        public const string Font = "font";
     }
 }

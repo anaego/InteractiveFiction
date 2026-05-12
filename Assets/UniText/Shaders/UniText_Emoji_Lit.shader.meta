@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 57a5f0f9a48c28f4ebebbe25a3cfdacd
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Shaders/UniText_Emoji_Lit.shader
+  uploadId: 908872

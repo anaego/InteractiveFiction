@@ -6,9 +6,6 @@ using Object = UnityEngine.Object;
 
 namespace LightSide
 {
-    /// <summary>
-    /// Manages instantiation and positioning of a RectTransform prefab for inline objects.
-    /// </summary>
     internal class RectTransformWrapper
     {
         private static List<ICanvasElement> canvasElementsBuffer;
@@ -296,7 +293,7 @@ namespace LightSide
             if (clusterToObj == null || clusterToObj.Count == 0) return;
 
             var glyphs = uniText.ResultGlyphs;
-            var fontSize = UniTextMeshGenerator.Current.FontSize;
+            var fontSize = uniText.MeshGenerator.FontSize;
 
             for (var i = 0; i < glyphs.Length; i++)
             {

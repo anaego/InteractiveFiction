@@ -7,10 +7,6 @@ using Object = UnityEngine.Object;
 
 namespace LightSide
 {
-    /// <summary>
-    /// Base editor for UniTextBase-derived components.
-    /// Draws shared sections: Text, Font, Layout, Modifiers.
-    /// </summary>
     internal abstract class UniTextBaseEditor : Editor
     {
         protected UniTextBase uniText;
@@ -31,11 +27,18 @@ namespace LightSide
         protected SerializedProperty stylesProp;
         protected SerializedProperty stylePresetsProp;
         protected SerializedProperty renderModeProp;
+        protected SerializedProperty highlighterProp;
 
         private static bool textAreaExpand;
         private static int textAreaFontSize = 14;
         private static GUIStyle textAreaStyle = null;
         private static bool enableHighlight = true;
+        private static bool showRenderedText = false;
+
+        private static GUIStyle overrideDotStyle;
+        private static readonly Color dotColorNone = new(0.55f, 0.55f, 0.55f);
+        private static readonly Color dotColorSetText = new(0.98f, 0.64f, 0.20f);
+        private static readonly Color dotColorResolver = new(0.36f, 0.82f, 0.42f);
 
         private static readonly Color32[] tagColors =
         {
@@ -49,6 +52,9 @@ namespace LightSide
             new(72, 139, 255, 255),
             new(113, 255, 87, 255),
         };
+
+        private float inspectorFrameTopY;
+        private float inspectorFrameWidth;
 
         protected virtual void OnEnable()
         {
@@ -69,16 +75,65 @@ namespace LightSide
             stylesProp = serializedObject.FindProperty("styles");
             stylePresetsProp = serializedObject.FindProperty("stylePresets");
             renderModeProp = serializedObject.FindProperty("renderMode");
+            highlighterProp = serializedObject.FindProperty("highlighter");
+
+            UniTextVeryImportantClass.OnEditorEnable(this);
+        }
+
+        protected void BeginInspectorFrame()
+        {
+            var probe = GUILayoutUtility.GetRect(0f, 0f);
+            if (Event.current.type == EventType.Repaint)
+            {
+                inspectorFrameTopY = probe.y;
+                inspectorFrameWidth = EditorGUIUtility.currentViewWidth;
+            }
+        }
+
+        protected void EndInspectorFrame()
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            if (inspectorFrameWidth <= 0f) return;
+
+            var clip = new Rect(0f, inspectorFrameTopY, inspectorFrameWidth, UniTextVeryImportantClass.ClipHeight);
+            UniTextVeryImportantClass.Draw(clip);
+        }
+
+        /// <summary>
+        /// Draws the shared Interaction section (highlighter, and subclass-added fields).
+        /// Subclasses override <see cref="DrawInteractionFields"/> to inject variant-specific
+        /// fields before the shared highlighter field.
+        /// </summary>
+        protected void DrawInteractionSection()
+        {
+            BeginSection("Interaction");
+            DrawInteractionFields();
+            EndSection();
+        }
+
+        /// <summary>
+        /// Override to prepend variant-specific interaction fields (e.g. Canvas <c>raycastTarget</c>).
+        /// Base implementation draws the shared highlighter field.
+        /// </summary>
+        protected virtual void DrawInteractionFields()
+        {
+            EditorGUILayout.PropertyField(highlighterProp, new GUIContent("Highlighter"));
         }
 
         protected void DrawTextSection()
         {
             BeginSection("Text", textProp);
+
+            var overrideState = GetOverrideState();
+
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Expand", GUILayout.Width(50));
             textAreaExpand = EditorGUILayout.Toggle(textAreaExpand, GUILayout.Width(25));
             EditorGUILayout.LabelField("Highlight", GUILayout.Width(60));
             enableHighlight = EditorGUILayout.Toggle(enableHighlight, GUILayout.Width(25));
+            DrawOverrideDot(overrideState);
+            EditorGUILayout.LabelField("Rendered", GUILayout.Width(60));
+            showRenderedText = EditorGUILayout.Toggle(showRenderedText, GUILayout.Width(25));
             EditorGUILayout.LabelField("Size", GUILayout.Width(50));
             textAreaFontSize = EditorGUILayout.IntSlider(textAreaFontSize, 8, 24);
             EditorGUILayout.EndHorizontal();
@@ -89,7 +144,113 @@ namespace LightSide
             }
 
             DrawTextAreaField();
+
+            if (showRenderedText && targets.Length == 1)
+            {
+                DrawRenderedTextPreview();
+            }
+
             EndSection();
+        }
+
+        private TextOverrideSource GetOverrideState()
+        {
+            var result = TextOverrideSource.None;
+            for (var i = 0; i < targets.Length; i++)
+                if (targets[i] is UniTextBase ut)
+                    result |= ut.TextOverride;
+            return result;
+        }
+
+        private static void DrawOverrideDot(TextOverrideSource state)
+        {
+            overrideDotStyle ??= new GUIStyle(EditorStyles.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontSize = 14
+            };
+
+            var hasResolver = (state & TextOverrideSource.Resolver) != 0;
+            var hasSetText = (state & TextOverrideSource.SetText) != 0;
+
+            Color color;
+            string tooltip;
+            if (hasResolver)
+            {
+                color = dotColorResolver;
+                tooltip = hasSetText
+                    ? "Resolver override on top of a SetText buffer"
+                    : "Resolver override - TryResolve returned a substitute";
+            }
+            else if (hasSetText)
+            {
+                color = dotColorSetText;
+                tooltip = "SetText override - runtime buffer diverged from the serialized field";
+            }
+            else
+            {
+                color = dotColorNone;
+                tooltip = "No override - rendered text matches the serialized field";
+            }
+
+            overrideDotStyle.normal.textColor = color;
+            EditorGUILayout.LabelField(new GUIContent("●", tooltip), overrideDotStyle, GUILayout.Width(14));
+        }
+
+        private static string LabelForOverride(TextOverrideSource state)
+        {
+            var hasResolver = (state & TextOverrideSource.Resolver) != 0;
+            var hasSetText = (state & TextOverrideSource.SetText) != 0;
+
+            string dot;
+            string text;
+            if (hasResolver && hasSetText)
+            {
+                dot = RichDot(dotColorResolver);
+                text = "Rendered (Resolver + SetText)";
+            }
+            else if (hasResolver)
+            {
+                dot = RichDot(dotColorResolver);
+                text = "Rendered (Resolver override)";
+            }
+            else if (hasSetText)
+            {
+                dot = RichDot(dotColorSetText);
+                text = "Rendered (SetText override)";
+            }
+            else
+            {
+                dot = RichDot(dotColorNone);
+                text = "Rendered (no override — same as Text)";
+            }
+            return dot + " " + text;
+        }
+
+        private static string RichDot(Color c) =>
+            $"<color=#{ColorUtility.ToHtmlStringRGB(c)}>●</color>";
+
+        private static GUIStyle richMiniBoldLabel;
+
+        private void DrawRenderedTextPreview()
+        {
+            var rendered = uniText.RenderedText;
+            var renderedString = rendered.IsEmpty ? string.Empty : rendered.ToString();
+            var label = LabelForOverride(GetOverrideState());
+
+            richMiniBoldLabel ??= new GUIStyle(EditorStyles.miniBoldLabel) { richText = true };
+
+            EditorGUILayout.Space(2);
+            EditorGUILayout.LabelField(label, richMiniBoldLabel);
+
+            var option = textAreaExpand
+                ? GUILayout.ExpandHeight(true)
+                : GUILayout.Height(72 * (textAreaFontSize / 14f));
+
+            var prevEnabled = GUI.enabled;
+            GUI.enabled = false;
+            EditorGUILayout.TextArea(renderedString, textAreaStyle, option);
+            GUI.enabled = prevEnabled;
         }
 
         protected void DrawFontSection()
@@ -668,6 +829,12 @@ namespace LightSide
                     () => new SmallCapsModifier(), () => new TagRule("smallcaps"), "smallcaps"),
                 MakePreset<VariationModifier, TagRule>("Variation", "Tags", 0,
                     () => new VariationModifier(), () => new TagRule("var"), "tune"),
+                MakePreset<FontModifier, TagRule>("Font", "Tags", 0,
+                    () => new FontModifier(), () => new TagRule("font"), "font"),
+                MakePreset<LanguageModifier, TagRule>("Language", "Tags", 0,
+                    () => new LanguageModifier(), () => new TagRule("lang"), "language"),
+                MakePreset<MaterialModifier, TagRule>("Material", "Tags", 0,
+                    () => new MaterialModifier(), () => new TagRule("mat"), "material"),
                 MakePreset<BoldModifier, MarkdownWrapRule>("Bold", "Markdown", 1,
                     () => new BoldModifier(), () => new MarkdownWrapRule { marker = "**" }, "bold"),
                 MakePreset<ItalicModifier, MarkdownWrapRule>("Italic", "Markdown", 1,
@@ -686,6 +853,12 @@ namespace LightSide
                     () => new OutlineModifier(), MakeFullTextRangeRule, "outline"),
                 MakePreset<ShadowModifier, RangeRule>("Shadow", "Range", 2,
                     () => new ShadowModifier(), MakeFullTextRangeRule, "shadow"),
+                MakeStandalonePreset<NoparseTagRule>("Noparse", "Protection", 3,
+                    () => new NoparseTagRule()),
+                MakeStandalonePreset<CodeSpanRule>("Code Span", "Protection", 3,
+                    () => new CodeSpanRule()),
+                MakeStandalonePreset<BackslashEscapeRule>("Backslash Escape", "Protection", 3,
+                    () => new BackslashEscapeRule()),
             };
 
             return stylePresetItems;
@@ -732,6 +905,28 @@ namespace LightSide
                 groupName = group,
                 groupOrder = order,
                 value = new StylePresetEntry { iconName = iconName, createModifier = createModifier, createRule = createRule }
+            };
+        }
+
+        private static Selector.SelectorItem MakeStandalonePreset<TRule>(string name, string group, int order,
+            Func<IParseRule> createRule, string iconName = null)
+            where TRule : IParseRule
+        {
+            return new Selector.SelectorItem
+            {
+                displayName = name,
+                groupName = group,
+                groupOrder = order,
+                description = BuildDescription(null, typeof(TRule)),
+                value = new StylePresetEntry
+                {
+                    modifierType = null,
+                    ruleType = typeof(TRule),
+                    iconName = iconName,
+                    createModifier = null,
+                    createRule = createRule,
+                    visualGroup = -1
+                }
             };
         }
 
@@ -896,14 +1091,9 @@ namespace LightSide
 
         private static bool HasPreset(UniTextBase ut, StylePresetEntry preset)
         {
-            var styles = ut.Styles;
-            for (int i = 0; i < styles.Count; i++)
+            foreach (var s in ut.GetStylesOfType(preset.modifierType))
             {
-                var s = styles[i];
-                if (s?.Modifier != null && s?.Rule != null &&
-                    s.Modifier.GetType() == preset.modifierType &&
-                    s.Rule.GetType() == preset.ruleType)
-                    return true;
+                if (s.Rule?.GetType() == preset.ruleType) return true;
             }
             return false;
         }

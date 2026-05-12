@@ -25,15 +25,11 @@ namespace LightSide
     /// For world-space text without Canvas, use <see cref="UniTextWorld"/> instead.
     /// </para>
     /// </remarks>
+    [AddComponentMenu("UI (Canvas)/UniText")]
     [RequireComponent(typeof(CanvasRenderer))]
     public partial class UniText : UniTextBase
     {
         #region Canvas State
-
-        [SerializeReference]
-        [TypeSelector]
-        [Tooltip("Text highlighter for visual feedback (click, hover, selection). Set to null to disable.")]
-        private TextHighlighter highlighter = new DefaultTextHighlighter();
 
         /// <summary>Cached sub-mesh renderer data to avoid GetComponent calls.</summary>
         private struct SubMeshRenderer
@@ -44,11 +40,10 @@ namespace LightSide
 
         private readonly List<SubMeshRenderer> subMeshRenderers = new();
 
-        /// <summary>Paired stencil material (clone for masking) with its source (original for atlas sync).</summary>
         private struct StencilPair
         {
             public Material stencil;
-            public Material source;
+            public GlyphAtlas atlas;
         }
 
         private readonly List<StencilPair> stencilPairs = new();
@@ -66,19 +61,6 @@ namespace LightSide
 
         #region Public API
 
-        /// <summary>Gets or sets the text highlighter for visual feedback on interactions.</summary>
-        public TextHighlighter Highlighter
-        {
-            get => highlighter;
-            set
-            {
-                if (highlighter == value) return;
-                highlighter?.Destroy();
-                highlighter = value;
-                highlighter?.Initialize(this);
-            }
-        }
-
         /// <summary>Gets all canvas renderers used for sub-meshes.</summary>
         public IEnumerable<CanvasRenderer> CanvasRenderers
         {
@@ -92,9 +74,6 @@ namespace LightSide
         #endregion
 
         #region Abstract Implementations
-
-        protected override bool GetHasWorldCamera()
-            => canvas != null && canvas.renderMode != UnityEngine.RenderMode.ScreenSpaceOverlay;
 
         protected override void UpdateRendering()
         {
@@ -124,9 +103,9 @@ namespace LightSide
             }
         }
 
-        protected override void OnSetDirty(DirtyFlags flags)
+        protected override void OnSetDirty(UniTextDirtyFlags flags)
         {
-            if ((flags & (DirtyFlags.FullRebuild | DirtyFlags.LayoutRebuild)) != 0)
+            if ((flags & (UniTextDirtyFlags.FullRebuild | UniTextDirtyFlags.LayoutRebuild)) != 0)
             {
                 LayoutRebuilder.MarkLayoutForRebuild(rectTransform);
             }
@@ -146,13 +125,7 @@ namespace LightSide
             base.OnEnable();
             CollectExistingSubMeshRenderers();
             cachedCanvasRenderMode = canvas != null ? canvas.renderMode : UnityEngine.RenderMode.ScreenSpaceOverlay;
-            highlighter?.Initialize(this);
-        }
-
-        protected override void OnDestroy()
-        {
-            highlighter?.Destroy();
-            base.OnDestroy();
+            EnsureAnimationHandler();
         }
 
         protected override void Sub()
@@ -172,14 +145,14 @@ namespace LightSide
             for (var i = 0; i < stencilPairs.Count; i++)
             {
                 var pair = stencilPairs[i];
-                if (pair.stencil != null && pair.source != null)
-                    pair.stencil.mainTexture = pair.source.mainTexture;
+                if (pair.stencil == null) continue;
+
+                var atlasTexture = pair.atlas != null ? pair.atlas.AtlasTexture : null;
+                if (pair.stencil.mainTexture != atlasTexture)
+                    pair.stencil.mainTexture = atlasTexture;
             }
         }
 
-        /// <summary>
-        /// Ensures the parent Canvas provides vertex data channels required by UniText shaders.
-        /// </summary>
         private static void EnsureCanvasShaderChannels(Canvas c)
         {
             const AdditionalCanvasShaderChannels required =
@@ -212,8 +185,10 @@ namespace LightSide
             crossFadeStartFrame = Time.frameCount;
         }
 
-        private void Update()
+        protected override void Update()
         {
+            base.Update();
+
             if (syncingCanvasColor)
             {
                 var crColor = canvasRenderer.GetColor();
@@ -232,8 +207,6 @@ namespace LightSide
                 }
             }
 
-            highlighter?.Update();
-            InteractiveRangeRegistry.Get(buffers)?.UpdateProviderHighlighters();
             var c = canvas;
 
             if (c != null)
@@ -244,7 +217,7 @@ namespace LightSide
                 if (mode != cachedCanvasRenderMode)
                 {
                     cachedCanvasRenderMode = mode;
-                    SetDirty(DirtyFlags.Alignment);
+                    SetDirty(UniTextDirtyFlags.Alignment);
                 }
             }
         }
@@ -305,7 +278,7 @@ namespace LightSide
             base.RecalculateMasking();
             stencilDepthDirty = true;
             ReleaseSubMeshStencilMaterials();
-            SetDirty(DirtyFlags.Material);
+            SetDirty(UniTextDirtyFlags.Material);
         }
 
         #endregion
@@ -354,74 +327,62 @@ namespace LightSide
             var stencilDepth = cachedStencilDepth;
 
             var gen = meshGenerator;
-            var passes = gen.effectPasses;
             var segmentCount = renderData.Count;
 
-            var textSegmentCount = 0;
-            for (var i = 0; i < segmentCount; i++)
-                if (renderData[i].fontId != EmojiFont.FontId)
-                    textSegmentCount++;
-
-            var requiredCount = passes.Count * textSegmentCount + segmentCount;
-
-            for (var i = requiredCount; i < existingCount; i++)
+            for (var i = segmentCount; i < existingCount; i++)
             {
                 var r = subMeshRenderers[i].renderer;
                 if (r != null) { r.Clear(); r.gameObject.SetActive(false); }
             }
 
-            var isMsdf = gen.RenderMode == RenderModee.MSDF;
+            var isMsdf = gen.RenderMode == UniTextRenderMode.MSDF;
             var sdfMat = isMsdf ? UniTextMaterialCache.Msdf : UniTextMaterialCache.Sdf;
-            var crIndex = 0;
-
-            for (var p = 0; p < passes.Count; p++)
-            {
-                var pass = passes[p];
-                pass.apply();
-
-                for (var i = 0; i < segmentCount; i++)
-                {
-                    if (renderData[i].fontId == EmojiFont.FontId) continue;
-                    var mesh = renderData[i].mesh;
-                    var vc = mesh.vertexCount;
-
-                    if (gen.Uvs2 != null)
-                        mesh.SetUVs(2, gen.Uvs2, 0, vc);
-                    if (pass.hasVertexShifts)
-                        mesh.SetVertices(gen.Vertices, 0, vc);
-
-                    AssignCanvasRenderer(crIndex++, mesh, sdfMat, stencilDepth);
-                }
-
-                pass.revert();
-
-                if (pass.hasVertexShifts)
-                {
-                    for (var i = 0; i < segmentCount; i++)
-                    {
-                        if (renderData[i].fontId == EmojiFont.FontId) continue;
-                        var mesh = renderData[i].mesh;
-                        mesh.SetVertices(gen.Vertices, 0, mesh.vertexCount);
-                    }
-                }
-            }
+            var textAtlas = GlyphAtlas.GetInstance(gen.RenderMode);
+            var emojiAtlas = GlyphAtlas.Emoji;
 
             for (var i = 0; i < segmentCount; i++)
             {
-                var pair = renderData[i];
-                if (pair.fontId != EmojiFont.FontId && gen.Uvs2 != null)
+                var data = renderData[i];
+                Material mat;
+                GlyphAtlas atlas;
+                if (data.materialOverride != null)
                 {
-                    var vc = pair.mesh.vertexCount;
-                    pair.mesh.SetUVs(2, gen.Uvs2, 0, vc);
+                    mat = data.materialOverride;
+                    atlas = data.atlasOverride;
                 }
-                var mat = pair.fontId == EmojiFont.FontId ? EmojiFont.Material : sdfMat;
-                AssignCanvasRenderer(crIndex++, pair.mesh, mat, stencilDepth);
+                else
+                {
+                    mat = data.fontId == EmojiFont.FontId ? EmojiFont.Material : sdfMat;
+                    atlas = data.fontId == EmojiFont.FontId ? emojiAtlas : textAtlas;
+                }
+
+                var mesh = BuildMeshForSegment(i, in data);
+                AssignCanvasRenderer(i, mesh, mat, atlas, stencilDepth);
             }
 
             UniTextDebug.EndSample();
         }
 
-        private void AssignCanvasRenderer(int crIndex, Mesh mesh, Material mat, int stencilDepth)
+        private static Mesh BuildMeshForSegment(int segmentIndex, in UniTextRenderData data)
+        {
+            var mesh = SharedMeshes.Get(segmentIndex);
+            mesh.Clear(false);
+            if (data.vertexCount == 0 || data.triangleCount == 0) return mesh;
+
+            mesh.SetVertices(data.vertices, data.vertexOffset, data.vertexCount);
+            mesh.SetUVs(0, data.uvs0, data.vertexOffset, data.vertexCount);
+            if (data.hasUv1 && data.uvs1 != null)
+                mesh.SetUVs(1, data.uvs1, data.vertexOffset, data.vertexCount);
+            if (data.hasUv2 && data.uvs2 != null)
+                mesh.SetUVs(2, data.uvs2, data.vertexOffset, data.vertexCount);
+            if (data.hasUv3 && data.uvs3 != null)
+                mesh.SetUVs(3, data.uvs3, data.vertexOffset, data.vertexCount);
+            mesh.SetColors(data.colors, data.vertexOffset, data.vertexCount);
+            mesh.SetTriangles(data.triangles, data.triangleOffset, data.triangleCount, 0);
+            return mesh;
+        }
+
+        private void AssignCanvasRenderer(int crIndex, Mesh mesh, Material mat, GlyphAtlas atlas, int stencilDepth)
         {
             var existingCount = subMeshRenderers.Count;
             if (crIndex < existingCount)
@@ -430,17 +391,17 @@ namespace LightSide
                 if (r != null)
                 {
                     if (!r.gameObject.activeSelf) r.gameObject.SetActive(true);
-                    SetSubMeshRendererData(r, mesh, mat, crIndex, stencilDepth);
+                    SetSubMeshRendererData(r, mesh, mat, atlas, crIndex, stencilDepth);
                     return;
                 }
             }
 
-            var newR = CreateSubMeshRenderer(crIndex, mesh, mat, stencilDepth);
+            var newR = CreateSubMeshRenderer(crIndex, mesh, mat, atlas, stencilDepth);
             if (crIndex < existingCount) subMeshRenderers[crIndex] = newR;
             else subMeshRenderers.Add(newR);
         }
 
-        private void SetSubMeshRendererData(CanvasRenderer r, Mesh mesh, Material mat, int crIndex, int stencilDepth)
+        private void SetSubMeshRendererData(CanvasRenderer r, Mesh mesh, Material mat, GlyphAtlas atlas, int crIndex, int stencilDepth)
         {
             if (mesh == null || mesh.vertexCount == 0) { r.Clear(); return; }
 
@@ -463,14 +424,14 @@ namespace LightSide
                 while (stencilPairs.Count <= crIndex) stencilPairs.Add(default);
                 if (stencilPairs[crIndex].stencil != null) StencilMaterial.Remove(stencilPairs[crIndex].stencil);
 
-                stencilPairs[crIndex] = new StencilPair { stencil = stencilMat, source = mat };
+                stencilPairs[crIndex] = new StencilPair { stencil = stencilMat, atlas = atlas };
                 matToUse = stencilMat;
             }
 
             r.SetMaterial(matToUse, 0);
         }
 
-        private SubMeshRenderer CreateSubMeshRenderer(int index, Mesh mesh, Material mat, int stencilDepth)
+        private SubMeshRenderer CreateSubMeshRenderer(int index, Mesh mesh, Material mat, GlyphAtlas atlas, int stencilDepth)
         {
             var go = new GameObject("-_UTSM_-") { hideFlags = HideFlags.HideAndDontSave };
             go.transform.SetParent(transform, false);
@@ -482,7 +443,7 @@ namespace LightSide
             rt.offsetMin = rt.offsetMax = Vector2.zero;
 
             var r = go.AddComponent<CanvasRenderer>();
-            SetSubMeshRendererData(r, mesh, mat, index, stencilDepth);
+            SetSubMeshRendererData(r, mesh, mat, atlas, index, stencilDepth);
 
             if (cachedValidClip) r.EnableRectClipping(cachedClipRect);
             r.clippingSoftness = cachedClipSoftness;

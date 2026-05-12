@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 16b648530a7c6024892dc64ceae434fb
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Shaders/UniText_Highlight.shader
+  uploadId: 908872

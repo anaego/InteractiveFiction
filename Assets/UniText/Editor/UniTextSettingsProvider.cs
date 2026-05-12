@@ -99,6 +99,18 @@ namespace LightSide
 
             EditorGUILayout.Space(10);
 
+            EditorGUILayout.LabelField("Localization", EditorStyles.boldLabel);
+            EditorGUILayout.Space(2);
+
+            EditorGUILayout.PropertyField(serializedSettings.FindProperty("language"),
+                new GUIContent("Language",
+                    "Project-wide BCP 47 language tag (e.g. zh-Hans, ja, en-US). " +
+                    "Applied to any codepoint without a component-level UniText.Language or " +
+                    "per-range <lang=...> override. Drives the OpenType 'locl' feature and " +
+                    "FontFamily.preferredLanguage selection. Leave empty to disable."));
+
+            EditorGUILayout.Space(10);
+
             EditorGUILayout.LabelField("Word Segmentation", EditorStyles.boldLabel);
             EditorGUILayout.Space(2);
 
@@ -338,7 +350,8 @@ namespace LightSide
         private static readonly string[] requiredShaderNames =
         {
             "UniText/SDF",
-            "UniText/Emoji"
+            "UniText/Emoji",
+            "UniText/Highlight"
         };
 
         private static void EnsureShaders(UniTextSettings settings)

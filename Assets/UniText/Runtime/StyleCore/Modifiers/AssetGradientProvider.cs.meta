@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 725fccba357aaea44a52a9ac004b3a9a
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/AssetGradientProvider.cs
+  uploadId: 908872

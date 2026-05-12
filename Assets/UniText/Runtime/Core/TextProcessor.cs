@@ -208,6 +208,9 @@ namespace LightSide
         private PooledBuffer<int> fontIdOverrides;
         private bool hasFontIdOverrides;
 
+        private byte cachedSettingsLanguageIndex;
+        private string cachedSettingsLanguageTag;
+
         /// <summary>Maps variation fontId → axis info for variable font runs. Populated by ResolveVariableAxes. Stored in buf for mesh generator access.</summary>
         private Dictionary<int, VariationRunInfo> variationMap;
 
@@ -505,6 +508,8 @@ namespace LightSide
             buf.variationMap = null;
             buf.shapingFontSize = settings.fontSize;
 
+            RefreshSettingsLanguage();
+
             UniTextDebug.BeginSample("TextProcessor.Parse");
             Parse(text);
             UniTextDebug.EndSample();
@@ -643,36 +648,16 @@ namespace LightSide
         {
             if (!hasValidFirstPassData) return 0;
 
-            var cpCount = buf.codepoints.count;
-            var cps = buf.codepoints.data;
-            var widths = buf.cpWidths.data;
-            var breakOps = buf.breakOpportunities.data;
-            var margins = buf.startMargins.data;
+            EnsureLines(TextProcessSettings.FloatMax, buf.shapingFontSize, wordWrap: false);
 
+            var lineCnt = buf.lines.count;
+            var linesData = buf.lines.data;
             var maxWidth = 0f;
-            var currentWidth = 0f;
-            var lineStartCp = 0;
-
-            for (var cp = 0; cp < cpCount; cp++)
+            for (var i = 0; i < lineCnt; i++)
             {
-                currentWidth += widths[cp];
-
-                if (breakOps[cp + 1] == LineBreakType.Mandatory)
-                {
-                    var contentWidth = ComputeContentWidth(cps, widths, currentWidth, lineStartCp, cp);
-                    var lineMargin = lineStartCp < margins.Length ? margins[lineStartCp] : 0;
-                    if (contentWidth + lineMargin > maxWidth)
-                        maxWidth = contentWidth + lineMargin;
-
-                    currentWidth = 0f;
-                    lineStartCp = cp + 1;
-                }
+                var w = linesData[i].width + linesData[i].startMargin;
+                if (w > maxWidth) maxWidth = w;
             }
-
-            var lastContentWidth = ComputeContentWidth(cps, widths, currentWidth, lineStartCp, cpCount - 1);
-            var lastLineMargin = lineStartCp < margins.Length ? margins[lineStartCp] : 0;
-            var lastLineWidth = lastContentWidth + lastLineMargin;
-            if (lastLineWidth > maxWidth) maxWidth = lastLineWidth;
 
             return maxWidth > 0 ? maxWidth : GetUnwrappedWidth();
         }
@@ -708,92 +693,6 @@ namespace LightSide
             if (!hasValidFirstPassData) return minSize;
             if (targetWidth <= 0 || targetHeight <= 0) return minSize;
             if (buf.shapingFontSize <= 0) return minSize;
-
-            var unwrappedWidth = GetUnwrappedWidth();
-            var maxGlyphScale = maxSize / buf.shapingFontSize;
-            var scaledUnwrappedWidth = unwrappedWidth * maxGlyphScale;
-
-            if (OnCalculateLineHeight == null && (!baseSettings.enableWordWrap || scaledUnwrappedWidth <= targetWidth))
-            {
-                var lineCount = 1;
-                var maxLineWidth = 0f;
-                var currentLineWidth = 0f;
-                var codepoints = buf.codepoints.Span;
-                var glyphs = buf.shapedGlyphs.Span;
-                var margins = buf.startMargins.data;
-                var glyphIdx = 0;
-                var lineStartIdx = 0;
-
-                var cpsData = buf.codepoints.data;
-                var cpWidthsData = buf.cpWidths.data;
-
-                for (var i = 0; i < codepoints.Length; i++)
-                {
-                    var cp = codepoints[i];
-                    if (UnicodeData.IsLineBreak(cp))
-                    {
-                        var contentWidth = ComputeContentWidth(cpsData, cpWidthsData, currentLineWidth, lineStartIdx, i - 1);
-                        var lineMargin = lineStartIdx < margins.Length ? margins[lineStartIdx] : 0;
-                        var totalLineWidth = contentWidth + lineMargin;
-                        if (totalLineWidth > maxLineWidth) maxLineWidth = totalLineWidth;
-                        currentLineWidth = 0f;
-                        lineStartIdx = i + 1;
-                        lineCount++;
-                        if (glyphIdx < glyphs.Length && glyphs[glyphIdx].advanceX == 0f)
-                            glyphIdx++;
-                    }
-                    else if (cp == '\r')
-                    {
-                        if (glyphIdx < glyphs.Length && glyphs[glyphIdx].advanceX == 0f)
-                            glyphIdx++;
-                    }
-                    else
-                    {
-                        if (glyphIdx < glyphs.Length)
-                        {
-                            currentLineWidth += glyphs[glyphIdx].advanceX;
-                            glyphIdx++;
-                        }
-                    }
-                }
-
-                var lastContentWidth = ComputeContentWidth(cpsData, cpWidthsData, currentLineWidth, lineStartIdx, codepoints.Length - 1);
-                var lastLineMargin = lineStartIdx < margins.Length ? margins[lineStartIdx] : 0;
-                var lastLineTotal = lastContentWidth + lastLineMargin;
-                if (lastLineTotal > maxLineWidth) maxLineWidth = lastLineTotal;
-
-                if (maxLineWidth <= 0f) maxLineWidth = 1f;
-
-                var widthLimitedSize = targetWidth / maxLineWidth * buf.shapingFontSize;
-
-                float lineHeightRatio, ascenderRatio, descenderRatio;
-                if (fontProvider != null)
-                {
-                    fontProvider.GetLineMetrics(1f, out var asc, out var desc, out var lh);
-                    lineHeightRatio = lh;
-                    ascenderRatio = asc;
-                    descenderRatio = desc;
-                }
-                else
-                {
-                    lineHeightRatio = 1.2f;
-                    ascenderRatio = lineHeightRatio * 0.8f;
-                    descenderRatio = -lineHeightRatio * 0.2f;
-                }
-
-                var capHeightRatio = fontProvider?.GetCapHeight(1f) ?? 0f;
-                var rawHeightRatio = ascenderRatio - descenderRatio + (lineCount - 1) * lineHeightRatio;
-                var effectiveLineHeight = lineHeightRatio + baseSettings.LineSpacing;
-                var trimRatio = TextLayout.ComputeTrimAmount(ascenderRatio, descenderRatio,
-                    capHeightRatio, baseSettings.OverEdge, baseSettings.UnderEdge,
-                    baseSettings.LeadingDistribution, effectiveLineHeight, effectiveLineHeight);
-                var heightLimitedSize = targetHeight / (rawHeightRatio - trimRatio);
-
-                var optimalSize = Math.Clamp(Math.Min(widthLimitedSize, heightLimitedSize), minSize, maxSize);
-                hasValidLinesData = false;
-                hasValidPositionedGlyphs = false;
-                return optimalSize;
-            }
 
             const float tolerance = 0.5f;
             var lo = minSize;
@@ -839,8 +738,20 @@ namespace LightSide
 
             lastLinesWidth = targetWidth;
             lastLinesFontSize = fontSize;
+            lastLinesWordWrap = baseSettings.enableWordWrap;
             hasValidLinesData = true;
             hasValidPositionedGlyphs = false;
+
+            if (!baseSettings.enableWordWrap)
+            {
+                var lineCnt = buf.lines.count;
+                var linesData = buf.lines.data;
+                var maxLineWidth = 0f;
+                for (var i = 0; i < lineCnt; i++)
+                    if (linesData[i].width > maxLineWidth) maxLineWidth = linesData[i].width;
+                if (maxLineWidth * glyphScale > targetWidth)
+                    return float.MaxValue;
+            }
 
             ComputeLineHeights(fontSize, baseSettings.LineSpacing, baseSettings.LeadingDistribution);
             var capHeight = fontProvider?.GetCapHeight(fontSize) ?? 0f;
@@ -1008,6 +919,7 @@ namespace LightSide
             if (!hasVarConfigs && !fp.HasFaces) return;
 
             var cpData = buf.codepoints.data;
+            var fontOverrideData = GetFontOverrideData();
 
             int prevFontId = 0;
             byte prevVarByte = 0, prevBoldByte = 0, prevItalicByte = 0;
@@ -1031,7 +943,19 @@ namespace LightSide
                 if (EmojiFont.IsAvailable && cp >= UnicodeData.EmojiRangeThreshold && IsSingleCodepointEmoji(cp))
                     continue;
 
-                var fontId = fp.FindFontForCodepoint(cp);
+                int fontId = 0;
+                if (fontOverrideData != null && (uint)i < (uint)fontOverrideData.Length)
+                {
+                    var overrideFontId = fontOverrideData[i];
+                    if (overrideFontId != 0
+                        && fp.TryGetFontAsset(overrideFontId, out var overrideFont)
+                        && Shaper.GetGlyphIndex(overrideFont, (uint)cp) != 0)
+                    {
+                        fontId = overrideFontId;
+                    }
+                }
+                if (fontId == 0)
+                    fontId = fp.FindFontForCodepoint(cp);
 
                 if (hasCached && fontId == prevFontId && varByte == prevVarByte
                     && boldByte == prevBoldByte && italicByte == prevItalicByte)
@@ -1227,11 +1151,13 @@ namespace LightSide
             var cpSpan = buf.codepoints.Span;
             var lvlSpan = buf.bidiLevels.data.AsSpan(0, cpCount);
             var scrSpan = buf.scripts.data.AsSpan(0, cpCount);
+            var langData = GetLanguageData();
+            var fontData = GetFontOverrideData();
             var fp = fontProvider;
 
             if (fp == null)
             {
-                ItemizeWithoutFontLookup(cpCount, lvlSpan, scrSpan, 0);
+                ItemizeWithoutFontLookup(cpCount, lvlSpan, scrSpan, langData, 0);
                 return;
             }
 
@@ -1247,11 +1173,13 @@ namespace LightSide
 
             var currentLevel = lvlSpan[runStart];
             var currentScript = scrSpan[runStart];
+            var currentLanguage = ResolveLanguage(langData, runStart);
             var currentIsReal = IsRealScript(currentScript);
 
             var clusterStart = runStart;
             var clusterEnd = FindNextClusterStart(graphemeBreaks, runStart + 1, cpCount);
-            var currentFontId = GetFontIdForCluster(cpSpan, clusterStart, clusterEnd, fp);
+            var currentFontOverride = fontData != null && (uint)runStart < (uint)fontData.Length ? fontData[runStart] : 0;
+            var currentFontId = GetFontIdForCluster(cpSpan, clusterStart, clusterEnd, fp, currentLanguage, currentFontOverride);
 
             for (var i = clusterEnd; i < cpCount; i++)
             {
@@ -1261,7 +1189,7 @@ namespace LightSide
                 if (UnicodeData.IsMandatoryBreakChar(cpSpan[i]))
                 {
                     if (i > runStart)
-                        AddRun(runStart, i - runStart, currentLevel, currentScript, currentFontId);
+                        AddRun(runStart, i - runStart, currentLevel, currentScript, currentFontId, currentLanguage);
 
                     runStart = i + 1;
                     while (runStart < cpCount && UnicodeData.IsMandatoryBreakChar(cpSpan[runStart]))
@@ -1271,40 +1199,47 @@ namespace LightSide
 
                     currentLevel = lvlSpan[runStart];
                     currentScript = scrSpan[runStart];
+                    currentLanguage = ResolveLanguage(langData, runStart);
                     currentIsReal = IsRealScript(currentScript);
                     clusterStart = runStart;
                     clusterEnd = FindNextClusterStart(graphemeBreaks, runStart + 1, cpCount);
-                    currentFontId = GetFontIdForCluster(cpSpan, clusterStart, clusterEnd, fp);
+                    currentFontOverride = fontData != null && (uint)runStart < (uint)fontData.Length ? fontData[runStart] : 0;
+                    currentFontId = GetFontIdForCluster(cpSpan, clusterStart, clusterEnd, fp, currentLanguage, currentFontOverride);
                     i = runStart;
                     continue;
                 }
+                
 
                 var level = lvlSpan[i];
                 var script = scrSpan[i];
+                var language = ResolveLanguage(langData, i);
 
                 clusterStart = i;
                 clusterEnd = FindNextClusterStart(graphemeBreaks, i + 1, cpCount);
-                var fontId = GetFontIdForCluster(cpSpan, clusterStart, clusterEnd, fp);
+                var fontOverride = fontData != null && (uint)i < (uint)fontData.Length ? fontData[i] : 0;
+                var fontId = GetFontIdForCluster(cpSpan, clusterStart, clusterEnd, fp, language, fontOverride);
 
                 var scriptIsReal = IsRealScript(script);
                 var scriptChanged = currentIsReal && scriptIsReal && currentScript != script;
+                var languageChanged = language != currentLanguage;
 
-                if (fontId != currentFontId && level == currentLevel && !scriptChanged
+                if (fontId != currentFontId && level == currentLevel && !scriptChanged && !languageChanged
                     && currentFontId != EmojiFont.FontId
                     && IsSpaceSeparator(cpSpan[clusterStart]))
                 {
                     fontId = currentFontId;
                 }
 
-                if (level != currentLevel || scriptChanged || fontId != currentFontId)
+                if (level != currentLevel || scriptChanged || languageChanged || fontId != currentFontId)
                 {
                     if (i > runStart)
-                        AddRun(runStart, i - runStart, currentLevel, currentScript, currentFontId);
+                        AddRun(runStart, i - runStart, currentLevel, currentScript, currentFontId, currentLanguage);
 
                     runStart = i;
                     currentLevel = level;
                     currentScript = scriptIsReal ? script : currentScript;
                     currentIsReal = scriptIsReal || currentIsReal;
+                    currentLanguage = language;
                     currentFontId = fontId;
                 }
                 else if (scriptIsReal && !currentIsReal)
@@ -1315,7 +1250,44 @@ namespace LightSide
             }
 
             if (runStart < cpCount)
-                AddRun(runStart, cpCount - runStart, currentLevel, currentScript, currentFontId);
+                AddRun(runStart, cpCount - runStart, currentLevel, currentScript, currentFontId, currentLanguage);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private byte[] GetLanguageData()
+        {
+            var attr = buf.GetAttributeData<PooledArrayAttribute<byte>>(AttributeKeys.Language);
+            return attr?.buffer.data;
+        }
+
+        private void RefreshSettingsLanguage()
+        {
+            var tag = UniTextSettings.Language ?? string.Empty;
+            if (cachedSettingsLanguageTag == tag) return;
+            cachedSettingsLanguageTag = tag;
+            cachedSettingsLanguageIndex = LanguageRegistry.Register(tag);
+        }
+
+        /// <summary>
+        /// Resolves the effective language for a codepoint: the per-codepoint override from the
+        /// attribute span if present, otherwise the project-wide language from <see cref="UniTextSettings"/>.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private byte ResolveLanguage(byte[] langData, int index)
+        {
+            if (langData != null && (uint)index < (uint)langData.Length)
+            {
+                var v = langData[index];
+                if (v != 0) return v;
+            }
+            return cachedSettingsLanguageIndex;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int[] GetFontOverrideData()
+        {
+            var attr = buf.GetAttributeData<PooledArrayAttribute<int>>(AttributeKeys.Font);
+            return attr?.buffer.data;
         }
 
         /// <summary>
@@ -1351,8 +1323,26 @@ namespace LightSide
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int GetFontIdForCluster(Span<int> cpSpan, int start, int end, UniTextFontProvider fp)
+        private int GetFontIdForCluster(Span<int> cpSpan, int start, int end, UniTextFontProvider fp, byte language = 0, int fontOverride = 0)
         {
+            var clusterLength = end - start;
+            var firstCp = cpSpan[start];
+
+            if (EmojiFont.IsAvailable)
+            {
+                if (clusterLength == 1)
+                {
+                    if ((uint)firstCp >= UnicodeData.EmojiRangeThreshold && IsSingleCodepointEmoji(firstCp))
+                        return EmojiFont.FontId;
+                }
+                else
+                {
+                    var cluster = cpSpan.Slice(start, clusterLength);
+                    if (EmojiSequenceClassifier.IsEmojiCluster(cluster))
+                        return EmojiFont.FontId;
+                }
+            }
+
             if (hasFontIdOverrides)
             {
                 var overrides = fontIdOverrides.data;
@@ -1360,26 +1350,14 @@ namespace LightSide
                     return overrides[start];
             }
 
-            var clusterLength = end - start;
-
-            if (clusterLength == 1)
+            if (fontOverride != 0
+                && fp.TryGetFontAsset(fontOverride, out var overrideFont)
+                && Shaper.GetGlyphIndex(overrideFont, (uint)firstCp) != 0)
             {
-                var cp = cpSpan[start];
-
-                if ((uint)cp < UnicodeData.EmojiRangeThreshold)
-                    return fp.FindFontForCodepoint(cp);
-
-                if (EmojiFont.IsAvailable && IsSingleCodepointEmoji(cp))
-                    return EmojiFont.FontId;
-
-                return fp.FindFontForCodepoint(cp);
+                return fontOverride;
             }
 
-            var cluster = cpSpan.Slice(start, clusterLength);
-            if (EmojiFont.IsAvailable && EmojiSequenceClassifier.IsEmojiCluster(cluster))
-                return EmojiFont.FontId;
-
-            return fp.FindFontForCodepoint(cpSpan[start]);
+            return fp.FindFontForCodepoint(firstCp, language);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1396,7 +1374,7 @@ namespace LightSide
         }
 
         private void ItemizeWithoutFontLookup(int cpCount, Span<byte> lvlSpan, Span<UnicodeScript> scrSpan,
-            int fontId)
+            byte[] langData, int fontId)
         {
             var cpSpan = buf.codepoints.Span;
 
@@ -1408,6 +1386,7 @@ namespace LightSide
 
             var currentLevel = lvlSpan[runStart];
             var currentScript = scrSpan[runStart];
+            var currentLanguage = ResolveLanguage(langData, runStart);
             var currentIsReal = IsRealScript(currentScript);
 
             for (var i = runStart + 1; i < cpCount; i++)
@@ -1415,7 +1394,7 @@ namespace LightSide
                 if (UnicodeData.IsMandatoryBreakChar(cpSpan[i]))
                 {
                     if (i > runStart)
-                        AddRun(runStart, i - runStart, currentLevel, currentScript, fontId);
+                        AddRun(runStart, i - runStart, currentLevel, currentScript, fontId, currentLanguage);
 
                     runStart = i + 1;
                     while (runStart < cpCount && UnicodeData.IsMandatoryBreakChar(cpSpan[runStart]))
@@ -1425,6 +1404,7 @@ namespace LightSide
 
                     currentLevel = lvlSpan[runStart];
                     currentScript = scrSpan[runStart];
+                    currentLanguage = ResolveLanguage(langData, runStart);
                     currentIsReal = IsRealScript(currentScript);
                     i = runStart;
                     continue;
@@ -1432,18 +1412,21 @@ namespace LightSide
 
                 var level = lvlSpan[i];
                 var script = scrSpan[i];
+                var language = ResolveLanguage(langData, i);
                 var scriptIsReal = IsRealScript(script);
                 var scriptChanged = currentIsReal && scriptIsReal && currentScript != script;
+                var languageChanged = language != currentLanguage;
 
-                if (level != currentLevel || scriptChanged)
+                if (level != currentLevel || scriptChanged || languageChanged)
                 {
                     if (i > runStart)
-                        AddRun(runStart, i - runStart, currentLevel, currentScript, fontId);
+                        AddRun(runStart, i - runStart, currentLevel, currentScript, fontId, currentLanguage);
 
                     runStart = i;
                     currentLevel = level;
                     currentScript = scriptIsReal ? script : currentScript;
                     currentIsReal = scriptIsReal || currentIsReal;
+                    currentLanguage = language;
                 }
                 else if (scriptIsReal && !currentIsReal)
                 {
@@ -1453,11 +1436,11 @@ namespace LightSide
             }
 
             if (runStart < cpCount)
-                AddRun(runStart, cpCount - runStart, currentLevel, currentScript, fontId);
+                AddRun(runStart, cpCount - runStart, currentLevel, currentScript, fontId, currentLanguage);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void AddRun(int start, int length, byte bidiLevel, UnicodeScript script, int fontId)
+        private void AddRun(int start, int length, byte bidiLevel, UnicodeScript script, int fontId, byte language = 0)
         {
             var count = buf.runs.count;
             if (count >= buf.runs.Capacity)
@@ -1467,6 +1450,7 @@ namespace LightSide
             {
                 range = new TextRange(start, length),
                 bidiLevel = bidiLevel,
+                language = language,
                 script = script,
                 fontId = fontId
             };
@@ -1515,6 +1499,8 @@ namespace LightSide
 
                 var glyphStart = buf.shapedGlyphs.count;
 
+                var languageHandle = LanguageRegistry.GetHandle(run.language);
+
                 var glyphCount = shaper.ShapeInto(
                     ref buf.shapedGlyphs,
                     cp,
@@ -1528,7 +1514,8 @@ namespace LightSide
                     out var runAdvance,
                     runVariations,
                     runFeatures,
-                    featureCount);
+                    featureCount,
+                    languageHandle);
 
                 AddShapedRun(new ShapedRun
                 {
@@ -1538,6 +1525,7 @@ namespace LightSide
                     width = runAdvance,
                     direction = run.Direction,
                     bidiLevel = run.bidiLevel,
+                    language = run.language,
                     fontId = run.fontId
                 });
             }
@@ -1719,20 +1707,6 @@ namespace LightSide
             }
         }
 
-        /// <summary>
-        /// Returns line width excluding trailing whitespace (hanging per CSS Text Level 3 §4.1.3).
-        /// </summary>
-        private static float ComputeContentWidth(int[] cps, float[] widths, float totalWidth, int lineStart, int lineEnd)
-        {
-            float trailingWs = 0;
-            for (var j = lineEnd; j >= lineStart; j--)
-            {
-                if (!LineBreaker.IsHangingWhitespace(cps[j])) break;
-                trailingWs += widths[j];
-            }
-            return totalWidth - trailingWs;
-        }
-
         private void EnsureLinesInternal(float width, float fontSize, bool wordWrap, ReadOnlySpan<float> cpWidths)
         {
             buf.lines.count = 0;
@@ -1752,11 +1726,6 @@ namespace LightSide
             ComputeLineHeights(fontSize, 0f);
         }
 
-        /// <summary>
-        /// Computes per-line advances and caches the raw total height and font metrics.
-        /// </summary>
-        /// <param name="fontSize">Font size for metric calculations.</param>
-        /// <param name="lineSpacing">Additional line spacing.</param>
         private void ComputeLineHeights(float fontSize, float lineSpacing,
             LeadingDistribution distribution = LeadingDistribution.HalfLeading)
         {
@@ -1871,6 +1840,12 @@ namespace LightSide
             var lineCnt = buf.lines.count;
             var orderedRunCnt = buf.orderedRuns.count;
 
+            var cpCount = buf.codepoints.count;
+
+            var marginsSpan = buf.startMargins.count >= cpCount
+                ? buf.startMargins.data.AsSpan(0, cpCount)
+                : ReadOnlySpan<float>.Empty;
+
             LineBreaker.BreakLines(
                 buf.codepoints.Span,
                 buf.shapedRuns.Span,
@@ -1881,7 +1856,7 @@ namespace LightSide
                 buf.bidiParagraphs.Span,
                 ref linesArr, ref lineCnt,
                 ref orderedRunsArr, ref orderedRunCnt,
-                buf.startMargins.data.AsSpan(0, buf.codepoints.count));
+                marginsSpan);
 
             buf.lines.data = linesArr;
             buf.orderedRuns.data = orderedRunsArr;

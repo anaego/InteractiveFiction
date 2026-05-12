@@ -64,6 +64,11 @@ namespace LightSide
         [Range(0.25f, 8f)]
         internal float sdfDetailMultiplier = 1f;
 
+        [SerializeField]
+        [Tooltip("Step offset applied after tile classification along the {64, 128, 256} hierarchy. +1 picks the next larger tile, -1 the next smaller. Clamped at hierarchy bounds. Per-glyph overrides ignore this offset.")]
+        [Range(-2, 2)]
+        internal int tileSizeOffset;
+
         /// <summary>Per-glyph tile size override. 0 = auto (use ClassifyTileSize), 64/128/256 = forced size.</summary>
         [Serializable]
         public struct GlyphOverride
@@ -111,13 +116,10 @@ namespace LightSide
         internal Dictionary<long, Glyph> glyphLookupDictionary;
         internal Dictionary<uint, UniTextCharacter> characterLookupDictionary;
 
-        /// <summary>Default varHash48 for this font (no variation axes). Derived from fontDataHash.</summary>
         internal long DefaultVarHash48 => GlyphAtlas.DefaultVarHash(FontDataHash);
 
-        /// <summary>Computes full glyph key for lookup in glyphLookupDictionary and atlas.</summary>
         internal long GlyphKey(uint glyphIndex) => GlyphAtlas.MakeKey(DefaultVarHash48, glyphIndex);
 
-        /// <summary>Computes glyph key with specific variation hash.</summary>
         internal static long GlyphKey(long varHash48, uint glyphIndex) => GlyphAtlas.MakeKey(varHash48, glyphIndex);
 
         [NonSerialized] private HB.hb_ot_var_axis_info_t[] cachedVariableAxes;
@@ -195,7 +197,7 @@ namespace LightSide
         {
             if (cachedInstanceId == 0)
             {
-                cachedInstanceId = GetInstanceID();
+                cachedInstanceId = ObjectUtils.GetInstanceIdCompat(this);
                 CachedName = name;
             }
 
@@ -319,7 +321,6 @@ namespace LightSide
             }
         }
 
-        /// <summary>Gets the character lookup table (unicode → UniTextCharacter).</summary>
         internal Dictionary<uint, UniTextCharacter> CharacterLookupTable
         {
             get
@@ -473,10 +474,6 @@ namespace LightSide
 
         #region Font Loading
 
-        /// <summary>
-        /// Ensures a FreeType face handle is loaded for this font asset.
-        /// </summary>
-        /// <returns>FT_Face handle, or IntPtr.Zero if loading failed.</returns>
         protected IntPtr EnsureFTFace()
         {
             if (ftFace != IntPtr.Zero)
@@ -496,9 +493,6 @@ namespace LightSide
             return ftFace;
         }
 
-        /// <summary>
-        /// Releases the FreeType face handle if loaded.
-        /// </summary>
         protected void ReleaseFTFace()
         {
             if (ftFace != IntPtr.Zero)
@@ -636,7 +630,7 @@ namespace LightSide
         /// EmojiFont overrides with its own filtering logic.
         /// </summary>
         internal virtual PreparedBatch? PrepareGlyphBatch(
-            List<uint> glyphIndices, UniTextBase.RenderModee mode,
+            List<uint> glyphIndices, UniTextRenderMode mode,
             long varHash48 = 0, int[] ftCoords = null)
         {
             if (glyphIndices == null || glyphIndices.Count == 0) return null;
@@ -687,7 +681,7 @@ namespace LightSide
             };
         }
 
-        internal virtual void ReleaseBatchProtectedKeys(UniTextBase.RenderModee mode)
+        internal virtual void ReleaseBatchProtectedKeys(UniTextRenderMode mode)
         {
             if (batchProtectedKeys == null || batchProtectedKeys.Count == 0) return;
             var atlas = GlyphAtlas.GetInstance(mode);
@@ -715,7 +709,7 @@ namespace LightSide
             var lookup = GlyphOverrideLookup;
             if (lookup != null && lookup.TryGetValue(glyphIndex, out int ov))
                 return ov;
-            return tileSize;
+            return GlyphAtlas.OffsetTileSize(tileSize, tileSizeOffset);
         }
 
         private class RenderedBatch
@@ -856,9 +850,6 @@ namespace LightSide
             });
         }
 
-        /// <summary>
-        /// Sets FreeType variable font design coordinates on a face.
-        /// </summary>
         private static unsafe void SetFTVariationCoords(IntPtr face, int[] coords)
         {
             if (face == IntPtr.Zero || coords == null || coords.Length == 0) return;
@@ -885,7 +876,7 @@ namespace LightSide
         /// Does NOT call FlushPendingGPU — caller should flush once after all fonts.
         /// EmojiFont overrides to copy pixels and register glyphs.
         /// </summary>
-        internal virtual int PackRenderedBatch(object renderedObj, PreparedBatch batch, UniTextBase.RenderModee mode)
+        internal virtual int PackRenderedBatch(object renderedObj, PreparedBatch batch, UniTextRenderMode mode)
         {
             if (renderedObj is not RenderedBatch rendered) return 0;
 
@@ -940,7 +931,7 @@ namespace LightSide
         /// <param name="glyphIndices">List of glyph indices to add.</param>
         /// <returns>Number of glyphs successfully added.</returns>
         internal virtual int TryAddGlyphsBatch(
-            List<uint> glyphIndices, UniTextBase.RenderModee mode,
+            List<uint> glyphIndices, UniTextRenderMode mode,
             long varHash48 = 0, int[] ftCoords = null)
         {
             if (glyphIndices == null || glyphIndices.Count == 0) return 0;
@@ -1017,7 +1008,7 @@ namespace LightSide
 
         internal void ReExtractForBandUpgrade(
             uint glyphIndex, long varHash48, int[] ftCoords,
-            UniTextBase.RenderModee mode, int requiredBandPx)
+            UniTextRenderMode mode, int requiredBandPx)
         {
             var cache = CurveCache;
             if (cache == null) return;
@@ -1322,21 +1313,11 @@ namespace LightSide
         #endregion
     }
 
-    /// <summary>
-    /// Represents a character mapping from Unicode codepoint to glyph.
-    /// </summary>
-    /// <remarks>
-    /// Stores the association between a Unicode codepoint and its corresponding
-    /// glyph in the font. The glyph reference is resolved at runtime.
-    /// </remarks>
     [Serializable]
     internal class UniTextCharacter
     {
-        /// <summary>Unicode codepoint for this character.</summary>
         public uint unicode;
-        /// <summary>Index of the glyph in the font's glyph table.</summary>
         public uint glyphIndex;
-        /// <summary>Runtime reference to the glyph (not serialized).</summary>
         [NonSerialized] public Glyph glyph;
 
         /// <summary>Default constructor for serialization.</summary>
@@ -1344,18 +1325,12 @@ namespace LightSide
         {
         }
 
-        /// <summary>
-        /// Creates a character with the specified unicode and glyph index.
-        /// </summary>
         public UniTextCharacter(uint unicode, uint glyphIndex)
         {
             this.unicode = unicode;
             this.glyphIndex = glyphIndex;
         }
 
-        /// <summary>
-        /// Creates a character with the specified unicode and glyph.
-        /// </summary>
         public UniTextCharacter(uint unicode, Glyph glyph)
         {
             this.unicode = unicode;

@@ -21,9 +21,13 @@ namespace LightSide
     /// <b>Shape</b> controls the gradient form: <c>linear</c> (projection onto an axis), <c>radial</c> (distance from center), or <c>angular</c> (conic sweep).
     /// </para>
     /// <para>
-    /// Gradients are defined in <see cref="UniTextGradients"/> ScriptableObject referenced by <see cref="UniTextSettings"/>.
+    /// The set of named gradients available to <c>&lt;gradient=name&gt;</c> tags is supplied by
+    /// an <see cref="IGradientProvider"/>. The default provider resolves names through the
+    /// project-wide <see cref="UniTextSettings.Gradients"/> asset; alternative providers allow
+    /// per-component asset references or inline catalogs edited on the modifier itself.
     /// </para>
     /// </remarks>
+    /// <seealso cref="IGradientProvider"/>
     /// <seealso cref="UniTextGradients"/>
     /// <seealso cref="IParseRule"/>
     [Serializable]
@@ -34,14 +38,28 @@ namespace LightSide
     [ParameterField(2, "Angle", "float(0,360)", "0")]
     public sealed class GradientModifier : BaseModifier
     {
-        private enum GradientShape : byte
+        [SerializeReference, TypeSelector]
+        [Tooltip("Source of named gradients for <gradient=name> tags handled by this modifier.")]
+        private IGradientProvider provider = new GlobalSettingsGradientProvider();
+
+        /// <summary>
+        /// Gets or sets the gradient source used by this modifier. <see langword="null"/> disables
+        /// resolution and causes <c>&lt;gradient&gt;</c> tags to be skipped with a warning.
+        /// </summary>
+        public IGradientProvider Provider
+        {
+            get => provider;
+            set => provider = value;
+        }
+
+        internal enum GradientShape : byte
         {
             Linear,
             Radial,
             Angular
         }
 
-        private struct GradientDef
+        internal struct GradientDef
         {
             public int startCluster;
             public int endCluster;
@@ -56,33 +74,32 @@ namespace LightSide
             public float radius;
             public GradientShape shape;
         }
-        
-        private PooledArrayAttribute<byte> attribute;
-        private readonly PooledList<GradientDef> gradientDefs = new();
-        private readonly PooledList<Rect> boundsCache = new();
+
+        private GradientAttributeData shared;
 
         protected override void OnEnable()
         {
-            buffers.PrepareAttribute(ref attribute, AttributeKeys.Gradient);
+            shared = buffers.GetOrCreateAttributeData<GradientAttributeData>(AttributeKeys.Gradient);
+            shared.Acquire(uniText);
+            shared.EnsureForCycle(buffers.codepoints.count);
 
-            gradientDefs.Clear();
-            
-            uniText.TextProcessor.LayoutComplete += OnLayoutComplete;
-            uniText.MeshGenerator.onGlyph += OnGlyph;
+            GradientNotifier.AnyChanged += OnGradientSourceChanged;
         }
 
         protected override void OnDisable()
         {
-            uniText.TextProcessor.LayoutComplete -= OnLayoutComplete;
-            uniText.MeshGenerator.onGlyph -= OnGlyph;
+            GradientNotifier.AnyChanged -= OnGradientSourceChanged;
+
+            if (shared != null)
+            {
+                shared.ReleaseRef();
+                shared = null;
+            }
         }
 
-        protected override void OnDestroy()
+        private void OnGradientSourceChanged()
         {
-            buffers.ReleaseAttributeData(AttributeKeys.Gradient);
-            attribute = null;
-            gradientDefs.Return();
-            boundsCache.Return();
+            uniText?.SetDirty(UniTextDirtyFlags.Color);
         }
 
         protected override void OnApply(int start, int end, string parameter)
@@ -93,23 +110,19 @@ namespace LightSide
             if (!TryParse(parameter, out var gradientName, out var angle, out var shape))
                 return;
 
-            var gradientsAsset = UniTextSettings.Gradients;
-            if (gradientsAsset == null)
+            if (provider == null)
             {
-                Debug.LogWarning("[GradientModifier] UniTextSettings.Gradients is not assigned");
+                Debug.LogWarning("[GradientModifier] No gradient provider assigned");
                 return;
             }
 
-            if (!gradientsAsset.TryGetGradient(gradientName, out var gradient))
+            if (!provider.TryGetGradient(gradientName, out var gradient))
             {
                 Debug.LogWarning($"[GradientModifier] Gradient '{gradientName}' not found");
                 return;
             }
 
-            var buffer = attribute.buffer.data;
-
-            var index = gradientDefs.Count;
-            gradientDefs.Add(new GradientDef
+            var defIndex = shared.AddDef(new GradientDef
             {
                 startCluster = start,
                 endCluster = end,
@@ -118,26 +131,148 @@ namespace LightSide
                 shape = shape
             });
 
-            var gradientIndex = (byte)(index + 1);
+            if (defIndex == 0)
+                return;
+
+            var buffer = shared.indexBuffer.buffer.data;
             var cpCount = buffers.codepoints.count;
             var actualEnd = Math.Min(end, cpCount);
-
+            var byteIndex = (byte)defIndex;
             for (var i = start; i < actualEnd; i++)
-                buffer[i] = gradientIndex;
+                buffer[i] = byteIndex;
+        }
+
+        private static bool TryParse(ReadOnlySpan<char> param, out string name, out float angle,
+            out GradientShape shape)
+        {
+            name = null;
+            angle = 0f;
+            shape = GradientShape.Linear;
+
+            var reader = new ParameterReader(param);
+            if (!reader.NextString(out name))
+                return false;
+
+            if (reader.Next(out var shapeToken) && !shapeToken.IsEmpty)
+            {
+                if (shapeToken.Equals("radial".AsSpan(), StringComparison.OrdinalIgnoreCase))
+                    shape = GradientShape.Radial;
+                else if (shapeToken.Equals("angular".AsSpan(), StringComparison.OrdinalIgnoreCase))
+                    shape = GradientShape.Angular;
+            }
+
+            reader.NextFloat(out angle);
+
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Per-<see cref="UniTextBase"/> gradient state shared by all <see cref="GradientModifier"/>
+    /// instances on the same component. Owns the cluster-index byte buffer, the global gradient
+    /// definition list, and the single <c>onGlyph</c> / <c>LayoutComplete</c> subscription pair.
+    /// </summary>
+    /// <remarks>
+    /// Two design points worth keeping in mind:
+    /// <list type="bullet">
+    /// <item>The byte buffer stores 1-based indices into the shared <see cref="defs"/> list, so
+    /// modifiers cooperate on a single global index space — multiple modifiers on the same
+    /// <see cref="UniTextBase"/> never collide on the index <c>1</c> as they did when each
+    /// instance maintained its own definitions list.</item>
+    /// <item>Only one delegate handles <c>onGlyph</c> per component regardless of how many
+    /// <see cref="GradientModifier"/> instances are installed; per-instance work is limited to
+    /// registration, which keeps the per-glyph cost flat as styles are added.</item>
+    /// </list>
+    /// </remarks>
+    internal sealed class GradientAttributeData : IAttributeData
+    {
+        public readonly PooledArrayAttribute<byte> indexBuffer = new();
+        public readonly PooledList<GradientModifier.GradientDef> defs = new();
+        private readonly PooledList<Rect> boundsCache = new();
+
+        /// <summary>
+        /// Number of <see cref="GradientModifier"/> instances currently keeping this shared state
+        /// alive. Direct references to <see cref="TextProcessor"/> / <see cref="UniTextMeshGenerator"/>
+        /// are captured at the 0→1 transition because <see cref="UniTextBase.DeInit"/> nulls those
+        /// fields before <see cref="UniTextBuffers.ReleaseAllAttributeData"/> runs — reading
+        /// <c>uniText.TextProcessor</c> from <see cref="Release"/> would NRE.
+        /// </summary>
+        private int activeCount;
+
+        private UniTextBase uniText;
+        private TextProcessor textProcessor;
+        private UniTextMeshGenerator meshGenerator;
+
+        public void Acquire(UniTextBase ut)
+        {
+            if (activeCount++ != 0) return;
+
+            uniText = ut;
+            textProcessor = ut.TextProcessor;
+            meshGenerator = ut.MeshGenerator;
+            textProcessor.LayoutComplete += OnLayoutComplete;
+            meshGenerator.onGlyph += OnGlyph;
+        }
+
+        public void ReleaseRef()
+        {
+            if (activeCount == 0) return;
+            if (--activeCount != 0) return;
+
+            Unsubscribe();
+            indexBuffer.EnsureCountAndClear(0);
+            defs.Clear();
+        }
+
+        private void Unsubscribe()
+        {
+            if (textProcessor != null)
+            {
+                textProcessor.LayoutComplete -= OnLayoutComplete;
+                textProcessor = null;
+            }
+            if (meshGenerator != null)
+            {
+                meshGenerator.onGlyph -= OnGlyph;
+                meshGenerator = null;
+            }
+            uniText = null;
+        }
+
+        public void EnsureForCycle(int codepointCount)
+        {
+            indexBuffer.EnsureCountAndClear(codepointCount);
+            defs.Clear();
+        }
+
+        /// <summary>
+        /// Registers a gradient definition and returns its 1-based index for storage in
+        /// <see cref="indexBuffer"/>. Returns <c>0</c> when the per-cycle capacity (255 ranges,
+        /// limited by the byte index) is exhausted; callers must skip writing the buffer in that case.
+        /// </summary>
+        public int AddDef(GradientModifier.GradientDef def)
+        {
+            if (defs.Count >= 255)
+            {
+                Debug.LogWarning("[GradientModifier] More than 255 gradient ranges in one text cycle; extra ranges will not be colored.");
+                return 0;
+            }
+            defs.Add(def);
+            return defs.Count;
         }
 
         private void OnLayoutComplete()
         {
-            if (gradientDefs.Count == 0) return;
+            if (defs.Count == 0) return;
 
-            for (var i = 0; i < gradientDefs.Count; i++)
+            for (var i = 0; i < defs.Count; i++)
             {
-                ref var g = ref gradientDefs[i];
+                ref var g = ref defs[i];
 
                 uniText.GetRangeBounds(g.startCluster, g.endCluster, boundsCache);
                 if (boundsCache.Count == 0) continue;
 
-                if (g.shape == GradientShape.Linear)
+                if (g.shape == GradientModifier.GradientShape.Linear)
                 {
                     var rad = g.angleDeg * Mathf.Deg2Rad;
                     g.cosAngle = Mathf.Cos(rad);
@@ -181,7 +316,7 @@ namespace LightSide
             }
         }
 
-        private static void UpdateProj(float x, float y, ref GradientDef g)
+        private static void UpdateProj(float x, float y, ref GradientModifier.GradientDef g)
         {
             var proj = x * g.cosAngle + y * g.sinAngle;
             if (proj < g.minProj) g.minProj = proj;
@@ -190,22 +325,24 @@ namespace LightSide
 
         private void OnGlyph()
         {
-            var gen = UniTextMeshGenerator.Current;
+            if (defs.Count == 0) return;
+
+            var gen = uniText.MeshGenerator;
             if (gen.font.IsColor) return;
 
-            var buffer = attribute.buffer.data;
+            var buffer = indexBuffer.buffer.data;
             var cluster = gen.currentCluster;
-            
+
             var gradientIndex = buffer[cluster];
             if (gradientIndex == 0) return;
 
-            ref readonly var g = ref gradientDefs[gradientIndex - 1];
+            ref readonly var g = ref defs[gradientIndex - 1];
 
-            var baseIdx = gen.vertexCount - 4;
+            var baseIdx = gen.faceBaseIdx;
             var colors = gen.Colors;
-            var alpha = gen.defaultColor.a;
+            var defaultAlpha = gen.defaultColor.a;
 
-            if (g.shape == GradientShape.Radial)
+            if (g.shape == GradientModifier.GradientShape.Radial)
             {
                 if (g.radius <= 0) return;
 
@@ -224,11 +361,11 @@ namespace LightSide
                         (byte)(color.r * 255),
                         (byte)(color.g * 255),
                         (byte)(color.b * 255),
-                        alpha
+                        (byte)(color.a * defaultAlpha)
                     );
                 }
             }
-            else if (g.shape == GradientShape.Angular)
+            else if (g.shape == GradientModifier.GradientShape.Angular)
             {
                 var verts = gen.Vertices;
                 var angleOffset = g.angleDeg * Mathf.Deg2Rad;
@@ -248,7 +385,7 @@ namespace LightSide
                         (byte)(color.r * 255),
                         (byte)(color.g * 255),
                         (byte)(color.b * 255),
-                        alpha
+                        (byte)(color.a * defaultAlpha)
                     );
                 }
             }
@@ -270,34 +407,19 @@ namespace LightSide
                         (byte)(color.r * 255),
                         (byte)(color.g * 255),
                         (byte)(color.b * 255),
-                        alpha
+                        (byte)(color.a * defaultAlpha)
                     );
                 }
             }
         }
 
-        private static bool TryParse(ReadOnlySpan<char> param, out string name, out float angle,
-            out GradientShape shape)
+        public void Release()
         {
-            name = null;
-            angle = 0f;
-            shape = GradientShape.Linear;
-
-            var reader = new ParameterReader(param);
-            if (!reader.NextString(out name))
-                return false;
-
-            if (reader.Next(out var shapeToken) && !shapeToken.IsEmpty)
-            {
-                if (shapeToken.Equals("radial".AsSpan(), StringComparison.OrdinalIgnoreCase))
-                    shape = GradientShape.Radial;
-                else if (shapeToken.Equals("angular".AsSpan(), StringComparison.OrdinalIgnoreCase))
-                    shape = GradientShape.Angular;
-            }
-
-            reader.NextFloat(out angle);
-
-            return true;
+            Unsubscribe();
+            activeCount = 0;
+            indexBuffer.Release();
+            defs.Return();
+            boundsCache.Return();
         }
     }
 }

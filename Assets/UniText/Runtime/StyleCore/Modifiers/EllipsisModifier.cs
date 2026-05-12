@@ -84,16 +84,16 @@ namespace LightSide
 
         private void OnRectHeightChanged()
         {
-            if ((uniText.CurrentDirtyFlags & UniTextBase.DirtyFlags.Layout) == 0)
-                uniText.SetDirty(UniTextBase.DirtyFlags.Layout);
+            if ((uniText.CurrentDirtyFlags & UniTextDirtyFlags.Layout) == 0)
+                uniText.SetDirty(UniTextDirtyFlags.Layout);
         }
 
-        private void OnDirtyFlagsChanged(UniTextBase.DirtyFlags flags)
+        private void OnDirtyFlagsChanged(UniTextDirtyFlags flags)
         {
-            if ((flags & UniTextBase.DirtyFlags.Alignment) != 0 &&
-                (uniText.CurrentDirtyFlags & UniTextBase.DirtyFlags.Layout) == 0)
+            if ((flags & UniTextDirtyFlags.Alignment) != 0 &&
+                (uniText.CurrentDirtyFlags & UniTextDirtyFlags.Layout) == 0)
             {
-                uniText.SetDirty(UniTextBase.DirtyFlags.Layout);
+                uniText.SetDirty(UniTextDirtyFlags.Layout);
             }
         }
 
@@ -947,7 +947,8 @@ namespace LightSide
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void OnGlyph()
         {
-            var gen = UniTextMeshGenerator.Current;
+            var gen = uniText.MeshGenerator;
+            if (gen.isVirtualGlyph) return;
             var cluster = gen.currentCluster;
             if ((uint)cluster < (uint)truncationFlags.count && truncationFlags.data[cluster] != 0)
             {

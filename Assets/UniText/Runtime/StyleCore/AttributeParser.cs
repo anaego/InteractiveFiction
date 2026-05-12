@@ -25,7 +25,6 @@ namespace LightSide
         /// <summary>Registered rule-modifier pairs in registration order.</summary>
         public readonly List<(IParseRule rule, BaseModifier modifier)> ruleModPairs = new();
 
-        /// <summary>Parsed attribute spans after calling <see cref="Parse"/>.</summary>
         internal readonly PooledList<AttributeSpan> spans = new();
 
         private readonly List<IParseRule> allRules = new();
@@ -88,7 +87,11 @@ namespace LightSide
 
         /// <summary>Registers a parse rule with its associated modifier.</summary>
         /// <param name="rule">The rule that identifies markup in text.</param>
-        /// <param name="modifier">The modifier that applies formatting for matched ranges.</param>
+        /// <param name="modifier">
+        /// The modifier that applies formatting for matched ranges.
+        /// May be <see langword="null"/> when <paramref name="rule"/> is standalone
+        /// (see <see cref="IParseRule.IsStandalone"/>).
+        /// </param>
         public void Register(IParseRule rule, BaseModifier modifier)
         {
             ruleModPairs.Add((rule, modifier));
@@ -114,10 +117,26 @@ namespace LightSide
             }
         }
 
+        /// <summary>Unregisters a standalone rule that was registered without a modifier.</summary>
+        /// <param name="rule">The rule to remove.</param>
+        public void UnregisterRule(IParseRule rule)
+        {
+            for (var i = ruleModPairs.Count - 1; i >= 0; i--)
+            {
+                if (ruleModPairs[i].rule == rule)
+                {
+                    allRules.Remove(rule);
+                    ruleToModifier.Remove(rule);
+                    ruleModPairs.RemoveAt(i);
+                    break;
+                }
+            }
+        }
+
         /// <summary>Deinitializes all registered modifiers.</summary>
         public void DeinitializeModifiers()
         {
-            for (var i = 0; i < ruleModPairs.Count; i++) ruleModPairs[i].modifier.Destroy();
+            for (var i = 0; i < ruleModPairs.Count; i++) ruleModPairs[i].modifier?.Destroy();
         }
 
         /// <summary>Releases all pooled buffers back to the pool.</summary>
@@ -135,7 +154,7 @@ namespace LightSide
         /// <summary>Resets all registered modifiers to their initial state.</summary>
         public void ResetModifiers()
         {
-            for (var i = 0; i < ruleModPairs.Count; i++) ruleModPairs[i].modifier.Disable();
+            for (var i = 0; i < ruleModPairs.Count; i++) ruleModPairs[i].modifier?.Disable();
         }
 
         /// <summary>Applies all parsed attribute spans to their modifiers.</summary>
@@ -301,7 +320,7 @@ namespace LightSide
 
         private void CreateSpanForRule(IParseRule rule, in ParsedRange range)
         {
-            if (ruleToModifier.TryGetValue(rule, out var modifier))
+            if (ruleToModifier.TryGetValue(rule, out var modifier) && modifier != null)
                 spans.Add(new AttributeSpan(range.start, range.end, modifier, range.parameter));
         }
 

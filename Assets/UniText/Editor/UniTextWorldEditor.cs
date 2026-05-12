@@ -9,16 +9,26 @@ namespace LightSide
     {
         private SerializedProperty sortingOrderProp;
         private SerializedProperty sortingLayerIDProp;
+        private SerializedProperty raycastTargetProp;
 
         protected override void OnEnable()
         {
             base.OnEnable();
             sortingOrderProp = serializedObject.FindProperty("sortingOrder");
             sortingLayerIDProp = serializedObject.FindProperty("sortingLayerID");
+            raycastTargetProp = serializedObject.FindProperty("raycastTarget");
+        }
+
+        protected override void DrawInteractionFields()
+        {
+            EditorGUILayout.PropertyField(raycastTargetProp, new GUIContent("Raycast Target"));
+            base.DrawInteractionFields();
         }
 
         public override void OnInspectorGUI()
         {
+            BeginInspectorFrame();
+
             serializedObject.Update();
             uniText = (UniTextWorld)target;
 
@@ -27,10 +37,13 @@ namespace LightSide
             DrawLayoutSection();
             DrawStyleSection();
             DrawRenderingSection();
+            DrawInteractionSection();
 
             serializedObject.ApplyModifiedProperties();
 
             DrawLoveLabel();
+
+            EndInspectorFrame();
         }
 
         private void DrawRenderingSection()

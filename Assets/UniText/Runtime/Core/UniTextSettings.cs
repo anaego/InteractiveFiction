@@ -42,7 +42,8 @@ namespace LightSide
 
         internal const int ShaderSdf = 0;
         internal const int ShaderEmoji = 1;
-        internal const int ShaderCount = 2;
+        internal const int ShaderHighlight = 2;
+        internal const int ShaderCount = 3;
 
         [SerializeField, HideInInspector]
         private Shader[] requiredShaders = new Shader[ShaderCount];
@@ -73,11 +74,18 @@ namespace LightSide
         [Tooltip("Prefab instantiated by GameObject > UI > UniText - Button. Falls back to code creation if null.")]
         private GameObject buttonPrefab;
 
+        [SerializeField]
+        [Tooltip("Prefab instantiated by GameObject > UI (World) > UniText - World Text. Falls back to code creation if null.")]
+        private GameObject worldTextPrefab;
+
         /// <summary>Gets the prefab for creating Text UI objects (Editor only).</summary>
         public static GameObject TextPrefab => Instance?.textPrefab;
 
         /// <summary>Gets the prefab for creating Button UI objects (Editor only).</summary>
         public static GameObject ButtonPrefab => Instance?.buttonPrefab;
+
+        /// <summary>Gets the prefab for creating world-space text objects (Editor only).</summary>
+        public static GameObject WorldTextPrefab => Instance?.worldTextPrefab;
     #endif
 
         /// <summary>Gets the compiled Unicode data asset, loaded from Resources.</summary>
@@ -134,6 +142,43 @@ namespace LightSide
         /// <summary>Gets the configured word segmentation dictionaries.</summary>
         public static StyledList<WordSegmentationDictionary> Dictionaries
             => Instance != null ? Instance.dictionaries : null;
+
+        [SerializeField]
+        [Tooltip("Project-wide BCP 47 language tag (e.g. zh-Hans, zh-Hant, ja, ko, en-US). " +
+                 "Applied to any codepoint that has no component-level UniText.Language and no " +
+                 "per-range <lang=...> override. Drives the OpenType 'locl' feature and " +
+                 "FontFamily.preferredLanguage selection. Leave empty to disable.")]
+        private string language = "";
+
+        /// <summary>
+        /// Gets or sets the project-wide BCP 47 language tag. Applied to any codepoint that has no
+        /// component-level <c>UniText.Language</c> and no per-range <c>&lt;lang&gt;</c> override.
+        /// </summary>
+        public static string Language
+        {
+            get => Instance != null ? Instance.language : null;
+            set
+            {
+                if (Instance == null) return;
+                value ??= string.Empty;
+                if (Instance.language == value) return;
+                Instance.language = value;
+                Changed?.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Target vertex capacity per shard in <c>UniTextWorldBatcher</c>. Groups of
+        /// <c>UniTextWorld</c> components that exceed this threshold are split into multiple
+        /// shards so that structural rebuilds of one shard do not touch the others.
+        /// </summary>
+        /// <remarks>
+        /// Default 8192 fits UInt16 indices (max 65 535) with large headroom and yields
+        /// ~2048 glyphs per shard — one shard is enough for a typical scene of world-space
+        /// text. Increase for very dense scenes to reduce draw calls; decrease for more
+        /// fine-grained partial updates when the same group is massive and animated.
+        /// </remarks>
+        public static int WorldBatcherShardTargetVertexCount { get; set; } = 8192;
 
         internal void InvokeChanged() => Changed?.Invoke();
         

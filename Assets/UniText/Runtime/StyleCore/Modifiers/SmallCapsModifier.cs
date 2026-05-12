@@ -55,26 +55,20 @@ namespace LightSide
             var mainFont = uniText.PrimaryFont;
             bool hasSmcp = Shaper.Instance.HasSmcpFeature(mainFont);
 
-            if (hasSmcp)
+            for (var i = start; i < clampedEnd; i++)
             {
-                for (var i = start; i < clampedEnd; i++)
+                var cp = codepoints[i];
+                var upper = UnicodeData.GetSimpleUppercase(cp);
+                if (upper == cp) continue;
+
+                if (hasSmcp)
                 {
-                    var cp = codepoints[i];
-                    if (IsLowercase(cp))
-                        buf[i] = Native;
+                    buf[i] = Native;
                 }
-            }
-            else
-            {
-                for (var i = start; i < clampedEnd; i++)
+                else
                 {
-                    var cp = codepoints[i];
-                    var upper = ToUpperCodepoint(cp);
-                    if (upper != cp)
-                    {
-                        buf[i] = Synthesis;
-                        codepoints[i] = upper;
-                    }
+                    buf[i] = Synthesis;
+                    codepoints[i] = upper;
                 }
             }
         }
@@ -108,7 +102,7 @@ namespace LightSide
 
         private void OnGlyph()
         {
-            var gen = UniTextMeshGenerator.Current;
+            var gen = uniText.MeshGenerator;
             var cluster = gen.currentCluster;
 
             if ((uint)cluster >= (uint)attribute.buffer.Capacity)
@@ -117,22 +111,8 @@ namespace LightSide
             if (attribute.buffer[cluster] != Synthesis)
                 return;
 
-            UniTextMeshGenerator.ScaleGlyphQuad(gen.Vertices, gen.vertexCount - 4, gen.baselineY, SynthesisScale);
+            UniTextMeshGenerator.ScaleGlyphQuad(gen.Vertices, gen.faceBaseIdx, gen.cursorX, gen.baselineY, SynthesisScale);
         }
 
-        private static bool IsLowercase(int codepoint)
-        {
-            if (codepoint > UnicodeData.MaxBmp) return false;
-            var ch = (char)codepoint;
-            return char.IsLower(ch);
-        }
-
-        private static int ToUpperCodepoint(int codepoint)
-        {
-            if (codepoint <= UnicodeData.MaxBmp)
-                return char.ToUpperInvariant((char)codepoint);
-
-            return codepoint;
-        }
     }
 }

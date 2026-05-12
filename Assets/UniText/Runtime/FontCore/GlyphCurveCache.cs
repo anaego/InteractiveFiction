@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace LightSide
@@ -181,20 +182,27 @@ namespace LightSide
 
         #endregion
 
-        /// <summary>
-        /// Core extraction: FreeType outline → normalized quadratic Bézier segments.
-        /// Thread-safe when called with independent face/buffer.
-        /// </summary>
         internal static long ftTicks;
+        internal static long normalizeTicks;
+        internal static long edgeColorTicks;
+        internal static long markInternalTicks;
+
+        internal static double TicksToMs(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
 
         [System.Diagnostics.Conditional("UNITEXT_DEBUG")]
-        internal static void ResetTimers() { Interlocked.Exchange(ref ftTicks, 0); }
+        internal static void ResetTimers()
+        {
+            Interlocked.Exchange(ref ftTicks, 0);
+            Interlocked.Exchange(ref normalizeTicks, 0);
+            Interlocked.Exchange(ref edgeColorTicks, 0);
+            Interlocked.Exchange(ref markInternalTicks, 0);
+        }
 
         [System.Diagnostics.Conditional("UNITEXT_DEBUG")]
-        private static void BeginFtTiming(ref long t0) { t0 = Stopwatch.GetTimestamp(); }
+        private static void BeginTicks(ref long t0) { t0 = Stopwatch.GetTimestamp(); }
 
         [System.Diagnostics.Conditional("UNITEXT_DEBUG")]
-        private static void EndFtTiming(long t0) { Interlocked.Add(ref ftTicks, Stopwatch.GetTimestamp() - t0); }
+        private static void AddTicks(ref long counter, long t0) { Interlocked.Add(ref counter, Stopwatch.GetTimestamp() - t0); }
 
         private GlyphCurveData ExtractCore(IntPtr face, uint glyphIndex, ref PooledBuffer<Segment> output)
         {
@@ -203,13 +211,13 @@ namespace LightSide
             var rawContours = stackalloc int[MaxContoursPerGlyph];
             int curveCount, contourCount;
             long t0 = 0;
-            BeginFtTiming(ref t0);
+            BeginTicks(ref t0);
             int err = FT.OutlineDecompose(face, glyphIndex,
                 rawCurves, rawTypes, &curveCount, MaxCurvesPerGlyph,
                 rawContours, &contourCount, MaxContoursPerGlyph,
                 out int bearingX, out int bearingY, out int advanceX,
                 out int width, out int height);
-            EndFtTiming(t0);
+            AddTicks(ref ftTicks, t0);
 
             if (err != 0 || curveCount == 0)
             {
@@ -260,10 +268,14 @@ namespace LightSide
             }
 
 
+            BeginTicks(ref t0);
             curveCount = NormalizeContours(ref output, segStart, curveCount, rawContours, contourCount);
+            AddTicks(ref normalizeTicks, t0);
 
+            BeginTicks(ref t0);
             EdgeColoring.ColorAllContours(output.data, segStart, curveCount, rawContours, contourCount);
-            
+            AddTicks(ref edgeColorTicks, t0);
+
             int cStart = 0;
             for (int c = 0; c < contourCount; c++)
             {
@@ -273,9 +285,9 @@ namespace LightSide
                 cStart = cEnd + 1;
             }
 
+            BeginTicks(ref t0);
             MarkInternalSegments(output.data, segStart, curveCount);
-
-            SortSegmentsByMinY(output.data, segStart, output.count - segStart);
+            AddTicks(ref markInternalTicks, t0);
 
             return new GlyphCurveData
             {
@@ -381,42 +393,106 @@ namespace LightSide
 
         private static float Mix(float a, float b, float t) => a + (b - a) * t;
 
-        /// <summary>
-        /// Detects segments where at least one endpoint is shared with another contour AND
-        /// both sides are inside the glyph (internal bridge edges between contours).
-        /// These create false distance gradients in SDF but are needed for winding.
-        /// The shared-vertex requirement prevents false positives on self-intersecting
-        /// single contours (no other contour → no shared vertices → nothing marked).
-        /// </summary>
         private static void MarkInternalSegments(Segment[] data, int segStart, int segCount)
         {
-            const float posEps = 1e-5f;
-            const float posEpsSq = posEps * posEps;
             const float normalEps = 1e-3f;
+
+            int numContours = 0;
+            for (int i = 0; i < segCount; i++)
+            {
+                int ci = data[segStart + i].contourIndex;
+                if (ci >= numContours) numContours = ci + 1;
+            }
+            if (numContours <= 1) return;
+
+            Span<float> sMinX = stackalloc float[segCount];
+            Span<float> sMinY = stackalloc float[segCount];
+            Span<float> sMaxX = stackalloc float[segCount];
+            Span<float> sMaxY = stackalloc float[segCount];
+            Span<byte> isSplit = stackalloc byte[segCount];
+            Span<float> csM01x = stackalloc float[segCount];
+            Span<float> csM01y = stackalloc float[segCount];
+            Span<float> csMxc = stackalloc float[segCount];
+            Span<float> csMyc = stackalloc float[segCount];
+            Span<float> csM12x = stackalloc float[segCount];
+            Span<float> csM12y = stackalloc float[segCount];
+
+            for (int i = 0; i < segCount; i++)
+            {
+                ref var s = ref data[segStart + i];
+                float p0x = s.p0x, p0y = s.p0y, p1x = s.p1x, p1y = s.p1y, p2x = s.p2x, p2y = s.p2y;
+                sMinX[i] = Math.Min(p0x, Math.Min(p1x, p2x));
+                sMinY[i] = Math.Min(p0y, Math.Min(p1y, p2y));
+                sMaxX[i] = Math.Max(p0x, Math.Max(p1x, p2x));
+                sMaxY[i] = Math.Max(p0y, Math.Max(p1y, p2y));
+
+                float denom = p0y - 2f * p1y + p2y;
+                if (Math.Abs(denom) > 1e-10f)
+                {
+                    float tSplit = (p0y - p1y) / denom;
+                    if (tSplit > 1e-6f && tSplit < 1f - 1e-6f)
+                    {
+                        float t = tSplit, mt = 1f - t;
+                        float m01x = mt * p0x + t * p1x, m01y = mt * p0y + t * p1y;
+                        float m12x = mt * p1x + t * p2x, m12y = mt * p1y + t * p2y;
+                        float mx = mt * m01x + t * m12x, my = mt * m01y + t * m12y;
+                        isSplit[i] = 1;
+                        csM01x[i] = m01x; csM01y[i] = m01y;
+                        csMxc[i] = mx; csMyc[i] = my;
+                        csM12x[i] = m12x; csM12y[i] = m12y;
+                    }
+                }
+            }
+
+            Span<float> cMinX = stackalloc float[numContours];
+            Span<float> cMinY = stackalloc float[numContours];
+            Span<float> cMaxX = stackalloc float[numContours];
+            Span<float> cMaxY = stackalloc float[numContours];
+            for (int c = 0; c < numContours; c++)
+            {
+                cMinX[c] = float.MaxValue; cMinY[c] = float.MaxValue;
+                cMaxX[c] = float.MinValue; cMaxY[c] = float.MinValue;
+            }
+            for (int i = 0; i < segCount; i++)
+            {
+                int ci = data[segStart + i].contourIndex;
+                if (sMinX[i] < cMinX[ci]) cMinX[ci] = sMinX[i];
+                if (sMinY[i] < cMinY[ci]) cMinY[ci] = sMinY[i];
+                if (sMaxX[i] > cMaxX[ci]) cMaxX[ci] = sMaxX[i];
+                if (sMaxY[i] > cMaxY[ci]) cMaxY[ci] = sMaxY[i];
+            }
+
+            Span<bool> contourHasOverlap = stackalloc bool[numContours];
+            for (int a = 0; a < numContours; a++)
+            {
+                bool over = false;
+                for (int b = 0; b < numContours && !over; b++)
+                {
+                    if (a == b) continue;
+                    if (cMinX[a] <= cMaxX[b] && cMaxX[a] >= cMinX[b] &&
+                        cMinY[a] <= cMaxY[b] && cMaxY[a] >= cMinY[b])
+                        over = true;
+                }
+                contourHasOverlap[a] = over;
+            }
 
             for (int i = 0; i < segCount; i++)
             {
                 ref var seg = ref data[segStart + i];
                 int myContour = seg.contourIndex;
+                if (!contourHasOverlap[myContour]) continue;
 
-                bool anyShared = false;
-                for (int j = 0; j < segCount && !anyShared; j++)
+                float ssMinX = sMinX[i], ssMinY = sMinY[i], ssMaxX = sMaxX[i], ssMaxY = sMaxY[i];
+
+                bool segOverlapsOther = false;
+                for (int b = 0; b < numContours && !segOverlapsOther; b++)
                 {
-                    ref var other = ref data[segStart + j];
-                    if (other.contourIndex == myContour) continue;
-
-                    float dx, dy;
-                    dx = seg.p0x - other.p0x; dy = seg.p0y - other.p0y;
-                    if (dx * dx + dy * dy < posEpsSq) { anyShared = true; continue; }
-                    dx = seg.p0x - other.p2x; dy = seg.p0y - other.p2y;
-                    if (dx * dx + dy * dy < posEpsSq) { anyShared = true; continue; }
-                    dx = seg.p2x - other.p0x; dy = seg.p2y - other.p0y;
-                    if (dx * dx + dy * dy < posEpsSq) { anyShared = true; continue; }
-                    dx = seg.p2x - other.p2x; dy = seg.p2y - other.p2y;
-                    if (dx * dx + dy * dy < posEpsSq) { anyShared = true; continue; }
+                    if (b == myContour) continue;
+                    if (ssMinX <= cMaxX[b] && ssMaxX >= cMinX[b] &&
+                        ssMinY <= cMaxY[b] && ssMaxY >= cMinY[b])
+                        segOverlapsOther = true;
                 }
-
-                if (!anyShared) continue;
+                if (!segOverlapsOther) continue;
 
                 float midX = 0.25f * seg.p0x + 0.5f * seg.p1x + 0.25f * seg.p2x;
                 float midY = 0.25f * seg.p0y + 0.5f * seg.p1y + 0.25f * seg.p2y;
@@ -430,45 +506,46 @@ namespace LightSide
                 float nx = -tanY * invLen;
                 float ny = tanX * invLen;
 
-                int windA = PointWinding(data, segStart, segCount, midX + nx, midY + ny);
-                int windB = PointWinding(data, segStart, segCount, midX - nx, midY - ny);
+                int windA = PointWindingBanded(data, segStart, segCount, sMinY, sMaxY, sMaxX,
+                    isSplit, csM01x, csM01y, csMxc, csMyc, csM12x, csM12y, midX + nx, midY + ny);
+                if (windA == 0) continue;
+                int windB = PointWindingBanded(data, segStart, segCount, sMinY, sMaxY, sMaxX,
+                    isSplit, csM01x, csM01y, csMxc, csMyc, csM12x, csM12y, midX - nx, midY - ny);
 
-                if (windA != 0 && windB != 0)
+                if (windB != 0)
                     seg.isInternal = 1;
             }
         }
 
-        private static int PointWinding(Segment[] data, int segStart, int segCount, float px, float py)
+        private static int PointWindingBanded(Segment[] data, int segStart, int segCount,
+            ReadOnlySpan<float> sMinY, ReadOnlySpan<float> sMaxY, ReadOnlySpan<float> sMaxX,
+            ReadOnlySpan<byte> isSplit,
+            ReadOnlySpan<float> csM01x, ReadOnlySpan<float> csM01y,
+            ReadOnlySpan<float> csMxc, ReadOnlySpan<float> csMyc,
+            ReadOnlySpan<float> csM12x, ReadOnlySpan<float> csM12y,
+            float px, float py)
         {
             int winding = 0;
             for (int i = 0; i < segCount; i++)
             {
+                if (sMaxX[i] <= px) continue;
+                if (py < sMinY[i] || py >= sMaxY[i]) continue;
                 ref var seg = ref data[segStart + i];
-                winding += SegmentRayCrossing(seg.p0x, seg.p0y, seg.p1x, seg.p1y, seg.p2x, seg.p2y, px, py);
+                if (isSplit[i] == 0)
+                {
+                    winding += MonoRayCrossing(seg.p0x, seg.p0y, seg.p1x, seg.p1y, seg.p2x, seg.p2y, px, py);
+                }
+                else
+                {
+                    float mx = csMxc[i], my = csMyc[i];
+                    winding += MonoRayCrossing(seg.p0x, seg.p0y, csM01x[i], csM01y[i], mx, my, px, py)
+                             + MonoRayCrossing(mx, my, csM12x[i], csM12y[i], seg.p2x, seg.p2y, px, py);
+                }
             }
             return winding;
         }
 
-        private static int SegmentRayCrossing(float p0x, float p0y, float p1x, float p1y,
-            float p2x, float p2y, float px, float py)
-        {
-            float denom = p0y - 2f * p1y + p2y;
-            if (Math.Abs(denom) > 1e-10f)
-            {
-                float tSplit = (p0y - p1y) / denom;
-                if (tSplit > 1e-6f && tSplit < 1f - 1e-6f)
-                {
-                    float t = tSplit, mt = 1f - t;
-                    float m01x = mt * p0x + t * p1x, m01y = mt * p0y + t * p1y;
-                    float m12x = mt * p1x + t * p2x, m12y = mt * p1y + t * p2y;
-                    float mx = mt * m01x + t * m12x, my = mt * m01y + t * m12y;
-                    return MonoRayCrossing(p0x, p0y, m01x, m01y, mx, my, px, py)
-                         + MonoRayCrossing(mx, my, m12x, m12y, p2x, p2y, px, py);
-                }
-            }
-            return MonoRayCrossing(p0x, p0y, p1x, p1y, p2x, p2y, px, py);
-        }
-
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int MonoRayCrossing(float p0x, float p0y, float p1x, float p1y,
             float p2x, float p2y, float px, float py)
         {
@@ -509,31 +586,6 @@ namespace LightSide
             }
 
             return (xHit > px) ? dir : 0;
-        }
-
-        /// <summary>
-        /// Sort segments by min-Y (insertion sort — optimal for small N, no allocations).
-        /// Min-Y considers all control points based on segment type.
-        /// </summary>
-        private static void SortSegmentsByMinY(Segment[] data, int start, int length)
-        {
-            for (int i = start + 1; i < start + length; i++)
-            {
-                var key = data[i];
-                float keyMinY = SegmentMinY(ref key);
-                int j = i - 1;
-                while (j >= start && SegmentMinY(ref data[j]) > keyMinY)
-                {
-                    data[j + 1] = data[j];
-                    j--;
-                }
-                data[j + 1] = key;
-            }
-        }
-
-        private static float SegmentMinY(ref Segment s)
-        {
-            return Math.Min(s.p0y, Math.Min(s.p1y, s.p2y));
         }
 
         public void Dispose()

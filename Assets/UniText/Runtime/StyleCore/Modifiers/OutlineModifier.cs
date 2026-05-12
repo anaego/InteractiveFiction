@@ -4,7 +4,7 @@ using UnityEngine;
 namespace LightSide
 {
     /// <summary>
-    /// Applies an outline effect via a dedicated Base-pass CanvasRenderer.
+    /// Applies an outline effect by appending duplicate glyph geometry behind the face.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -32,7 +32,7 @@ namespace LightSide
             public int start;
             public int end;
             public float dilate;
-            public float packedColor;
+            public Vector2 packedColor;
         }
 
         private PooledBuffer<EffectRange> ranges;
@@ -68,7 +68,9 @@ namespace LightSide
 
         protected override void OnGlyphEffect()
         {
-            var gen = UniTextMeshGenerator.Current;
+            var gen = uniText.MeshGenerator;
+            if (gen.font.IsColor) return;
+
             var cluster = gen.currentCluster;
             var count = ranges.count;
             var data = ranges.data;
@@ -78,21 +80,31 @@ namespace LightSide
                 ref var range = ref data[i];
                 if (cluster < range.start || cluster >= range.end) continue;
 
-                var baseIdx = gen.vertexCount - 4;
+                var baseIdx = gen.faceBaseIdx;
                 var glyphH = gen.Uvs0[baseIdx].w;
+                if (glyphH < 1e-6f) return;
+
                 var faceDilate = gen.Uvs1[baseIdx].y;
+                var padGlyph = GlyphAtlas.Pad / glyphH;
 
                 var dilate = fixedPixelSize
                     ? range.dilate / (GlyphAtlas.Pad * gen.fontMetricFactor)
                     : range.dilate;
 
-                var extent = (faceDilate + dilate) * GlyphAtlas.Pad / glyphH;
+                var extent = (faceDilate + dilate) * padGlyph;
+                var effectiveExtent = extent < padGlyph ? extent : padGlyph;
+                if (effectiveExtent > gen.currentMaxGlyphExtent)
+                    gen.currentMaxGlyphExtent = effectiveExtent;
 
-                RecordEffectGlyph(new EffectGlyph
-                {
-                    baseIdx = baseIdx,
-                    effectUv = new Vector4(dilate, range.packedColor, 0f, 0f)
-                }, extent);
+                var currentPad = UniTextMeshGenerator.DefaultSdfPadding;
+                var facePad = faceDilate * padGlyph;
+                if (facePad > currentPad) currentPad = facePad;
+                var delta = effectiveExtent - currentPad;
+
+                EnqueueEffectQuad(
+                    baseIdx,
+                    new Vector4(dilate, range.packedColor.x, range.packedColor.y, 0f),
+                    expandDelta: delta > 0f ? delta : 0f);
                 return;
             }
         }

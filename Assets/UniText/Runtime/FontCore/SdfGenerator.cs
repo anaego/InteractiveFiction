@@ -454,6 +454,10 @@ namespace LightSide
                     dstRow[x] = halfOne;
 
                 int srcRow = y * tileSize;
+                int rowUp = (y - 1) * tileSize;
+                int rowDown = (y + 1) * tileSize;
+                bool canCheckNbrs = y > 0 && y < tileSize - 1;
+
                 for (int x = rxMin; x <= rxMax; x++)
                 {
                     int idx = (srcRow + x) * 2;
@@ -461,8 +465,28 @@ namespace LightSide
                     float dist = math.sqrt(vx * vx + vy * vy);
                     if (dist > 1e5f) dist = 1e5f;
 
-                    float sign = (signGrid[srcRow + x] != 0) ? -1f : 1f;
-                    float v = sign * dist * invSpread + 0.5f;
+                    bool thisInside = signGrid[srcRow + x] != 0;
+                    float v;
+
+                    if (thisInside)
+                    {
+                        bool coreInside = canCheckNbrs && x > 0 && x < tileSize - 1
+                            && signGrid[rowUp + x - 1] != 0
+                            && signGrid[rowUp + x] != 0
+                            && signGrid[rowUp + x + 1] != 0
+                            && signGrid[srcRow + x - 1] != 0
+                            && signGrid[srcRow + x + 1] != 0
+                            && signGrid[rowDown + x - 1] != 0
+                            && signGrid[rowDown + x] != 0
+                            && signGrid[rowDown + x + 1] != 0;
+
+                        v = coreInside ? 0f : (-dist * invSpread + 0.5f);
+                    }
+                    else
+                    {
+                        v = dist * invSpread + 0.5f;
+                    }
+
                     float encoded = v < 0f ? 0f : (v > 1f ? 1f : v);
                     dstRow[x] = (ushort)math.f32tof16(encoded);
                 }

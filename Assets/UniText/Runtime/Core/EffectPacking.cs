@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 
@@ -12,29 +11,26 @@ namespace LightSide
     /// Used by effect modifiers to encode per-glyph layer parameters (color, offsets)
     /// into float UV values that are unpacked in the shader.
     /// </para>
-    /// <para>
-    /// Packing formats:
-    /// <list type="bullet">
-    /// <item><see cref="PackColor"/>: Color32 RGBA → uint → float (bit-reinterpret)</item>
-    /// </list>
-    /// </para>
     /// </remarks>
     public static class EffectPacking
     {
         /// <summary>
-        /// Packs a Color32 into a single float via bit reinterpretation.
+        /// Packs a Color32 into two floats safe for hardware interpolation: <c>x = R*256 + G</c>,
+        /// <c>y = B*256 + A</c>. The two floats are stored in <c>UV2.y</c> and <c>UV2.z</c>
+        /// of every effect-quad vertex and decoded in the shader by <c>UnpackColor</c>.
         /// </summary>
-        /// <param name="c">The color to pack.</param>
-        /// <returns>A float whose bits represent the packed RGBA bytes.</returns>
         /// <remarks>
-        /// Layout: R in bits 24–31, G in 16–23, B in 8–15, A in 0–7.
-        /// Unpacked in shader with <c>asuint</c> and bit shifts.
+        /// Both packed values lie in <c>[0, 65535]</c>, well inside the 24-bit integer range
+        /// that single-precision float represents exactly. The previous bit-reinterpret packing
+        /// produced NaN/Inf bit patterns for many color values; some GPUs canonicalize quiet-NaN
+        /// at the vertex–fragment interpolator boundary, which forced bit 22 of the mantissa
+        /// (the high bit of the green channel) on, randomly tinting effect layers as their
+        /// channels crossed bit-6 thresholds.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float PackColor(Color32 c)
+        public static Vector2 PackColor(Color32 c)
         {
-            var packed = ((uint)c.r << 24) | ((uint)c.g << 16) | ((uint)c.b << 8) | c.a;
-            return BitConverter.Int32BitsToSingle(unchecked((int)packed));
+            return new Vector2(c.r * 256 + c.g, c.b * 256 + c.a);
         }
     }
 }

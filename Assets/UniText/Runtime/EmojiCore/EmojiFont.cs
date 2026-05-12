@@ -98,10 +98,6 @@ namespace LightSide
         /// <summary>Atlas padding for emoji glyph UV sampling (gutter inside tile prevents bilinear bleeding).</summary>
         public override int AtlasPadding => 1;
 
-        /// <summary>
-        /// Ensures the emoji material's mainTexture is in sync with the GlyphAtlas emoji texture.
-        /// Called once per frame before rendering.
-        /// </summary>
         private static bool subscribedToAtlasChange;
 
         internal void SyncMaterialTexture()
@@ -112,20 +108,19 @@ namespace LightSide
                 GlyphAtlas.AnyAtlasTextureChanged += OnEmojiAtlasTextureChanged;
             }
 
-            var emojiAtlas = GlyphAtlas.Emoji;
-            if (emojiAtlas == null) return;
-            var atlasTex = emojiAtlas.AtlasTexture;
-            if (material != null && atlasTex != null && material.mainTexture != atlasTex)
-                Material.mainTexture = atlasTex;
+            if (material == null) return;
+
+            var atlasTex = GlyphAtlas.Emoji?.AtlasTexture;
+            if (material.mainTexture != atlasTex)
+                material.mainTexture = atlasTex;
         }
 
-        private static void OnEmojiAtlasTextureChanged(Texture newTexture)
+        private static void OnEmojiAtlasTextureChanged(Texture _)
         {
             if (material == null) return;
-            var emojiAtlas = GlyphAtlas.Emoji;
-            if (emojiAtlas == null) return;
-            var atlasTex = emojiAtlas.AtlasTexture;
-            if (newTexture == atlasTex && atlasTex != null)
+
+            var atlasTex = GlyphAtlas.Emoji?.AtlasTexture;
+            if (material.mainTexture != atlasTex)
                 material.mainTexture = atlasTex;
         }
 
@@ -189,7 +184,6 @@ namespace LightSide
         }
     #endif
 
-        /// <summary>Disposes the singleton instance and releases all resources.</summary>
         private static void DisposeAll()
         {
             if (instance != null)
@@ -212,22 +206,14 @@ namespace LightSide
 
         #region RenderedGlyphData
 
-        /// <summary>Internal structure holding rendered glyph bitmap data.</summary>
         private struct RenderedGlyphData
         {
-            /// <summary>Bitmap width in pixels.</summary>
             public int width;
-            /// <summary>Bitmap height in pixels.</summary>
             public int height;
-            /// <summary>Horizontal bearing (offset from origin to left edge).</summary>
             public float bearingX;
-            /// <summary>Vertical bearing (offset from baseline to top edge).</summary>
             public float bearingY;
-            /// <summary>Horizontal advance width.</summary>
             public float advanceX;
-            /// <summary>RGBA pixel data (4 bytes per pixel).</summary>
             public byte[] rgbaPixels;
-            /// <summary>True if pixel format is BGRA (requires swizzling).</summary>
             public bool isBGRA;
         }
 
@@ -490,17 +476,16 @@ namespace LightSide
         /// Uses parallel FreeType rendering on desktop/mobile, Core Text on iOS, browser Canvas API on WebGL.
         /// WebGL and sequential fallback paths bypass the split pipeline.
         /// </remarks>
-        internal override int TryAddGlyphsBatch(List<uint> glyphIndices, UniTextBase.RenderModee mode,
+        internal override int TryAddGlyphsBatch(List<uint> glyphIndices, UniTextRenderMode mode,
             long varHash48 = 0, int[] ftCoords = null)
         {
             if (glyphIndices == null || glyphIndices.Count == 0)
                 return 0;
 
-    #if UNITY_WEBGL && !UNITY_EDITOR
-            return TryAddGlyphsBatchWebGL(glyphIndices);
-    #else
+    #if !UNITY_WEBGL || UNITY_EDITOR
             if (!fontLoaded || cachedFontData == null)
                 return TryAddGlyphsBatchFreeTypeSequential(glyphIndices);
+    #endif
 
             var batch = PrepareGlyphBatch(glyphIndices, mode);
             if (batch == null) return 0;
@@ -509,21 +494,19 @@ namespace LightSide
             var result = PackRenderedBatch(rendered, b, mode);
             b.filteredGlyphs.Return();
             return result;
-    #endif
         }
 
         /// <inheritdoc/>
-        internal override PreparedBatch? PrepareGlyphBatch(List<uint> glyphIndices, UniTextBase.RenderModee mode,
+        internal override PreparedBatch? PrepareGlyphBatch(List<uint> glyphIndices, UniTextRenderMode mode,
             long varHash48 = 0, int[] ftCoords = null)
         {
             if (glyphIndices == null || glyphIndices.Count == 0)
                 return null;
 
-    #if UNITY_WEBGL && !UNITY_EDITOR
-            return null;
-    #else
+    #if !UNITY_WEBGL || UNITY_EDITOR
             if (!fontLoaded || cachedFontData == null)
                 return null;
+    #endif
 
             var atlas = GlyphAtlas.Emoji;
             var varHash = DefaultVarHash48;
@@ -556,17 +539,18 @@ namespace LightSide
 
             if (filtered.count == 0) return null;
 
+    #if !UNITY_WEBGL || UNITY_EDITOR
             if (useCOLRv1)
                 colrPool ??= new COLRv1RendererPool(cachedFontData, loadedFaceIndex);
             else
                 facePool ??= new FreeTypeFacePool(cachedFontData, loadedFaceIndex, emojiPixelSize);
+    #endif
 
             return new PreparedBatch
             {
                 filteredGlyphs = filtered,
                 varHash48 = varHash
             };
-    #endif
         }
 
         public override long EstimateTileArea(object renderedObj)
@@ -575,7 +559,14 @@ namespace LightSide
             int tileSize = emojiPixelSize;
             long tilePx = (long)tileSize * tileSize;
 
-#if !UNITY_WEBGL || UNITY_EDITOR
+#if UNITY_WEBGL && !UNITY_EDITOR
+            var rendered = (RenderedGlyphData[])renderedObj;
+            long area = 0;
+            for (int i = 0; i < rendered.Length; i++)
+                if (rendered[i].width > 0 && rendered[i].height > 0)
+                    area += tilePx;
+            return area;
+#else
             if (useCOLRv1)
             {
                 var rendered = (COLRv1RendererPool.RenderedGlyph[])renderedObj;
@@ -585,7 +576,6 @@ namespace LightSide
                 return area;
             }
             else
-#endif
             {
                 var rendered = (FreeType.RenderedGlyph[])renderedObj;
                 long area = 0;
@@ -593,13 +583,14 @@ namespace LightSide
                     if (rendered[i].isValid) area += tilePx;
                 return area;
             }
+#endif
         }
 
         /// <inheritdoc/>
         internal override object RenderPreparedBatch(PreparedBatch batch)
         {
     #if UNITY_WEBGL && !UNITY_EDITOR
-            return null;
+            return RenderPreparedBatchWebGL(batch);
     #elif UNITY_IOS && !UNITY_EDITOR
             var glyphs = batch.filteredGlyphs;
             var rendered = new FreeType.RenderedGlyph[glyphs.count];
@@ -625,7 +616,7 @@ namespace LightSide
     #endif
         }
 
-        internal override void ReleaseBatchProtectedKeys(UniTextBase.RenderModee mode)
+        internal override void ReleaseBatchProtectedKeys(UniTextRenderMode mode)
         {
             if (batchProtectedKeys == null || batchProtectedKeys.Count == 0) return;
             var atlas = GlyphAtlas.Emoji;
@@ -635,10 +626,10 @@ namespace LightSide
         }
 
         /// <inheritdoc/>
-        internal override int PackRenderedBatch(object renderedObj, PreparedBatch batch, UniTextBase.RenderModee mode)
+        internal override int PackRenderedBatch(object renderedObj, PreparedBatch batch, UniTextRenderMode mode)
         {
     #if UNITY_WEBGL && !UNITY_EDITOR
-            return 0;
+            return PackRenderedBatchWebGL(renderedObj, batch);
     #else
             if (renderedObj == null) return 0;
 
@@ -715,28 +706,39 @@ namespace LightSide
         }
 
     #if UNITY_WEBGL && !UNITY_EDITOR
-        private unsafe int TryAddGlyphsBatchWebGL(List<uint> glyphIndices)
-        {
-            var filteredGlyphs = FilterNewGlyphs(glyphIndices);
-            if (filteredGlyphs == null)
-                return 0;
+        [NonSerialized] private List<uint> webGLBatchHashesBuffer;
 
-            if (!WebGLEmoji.TryRenderEmojiBatch(filteredGlyphs, emojiPixelSize, out var batchResult))
+        private unsafe RenderedGlyphData[] RenderPreparedBatchWebGL(PreparedBatch batch)
+        {
+            var glyphs = batch.filteredGlyphs;
+            if (glyphs.count == 0) return null;
+
+            webGLBatchHashesBuffer ??= new List<uint>(256);
+            webGLBatchHashesBuffer.Clear();
+            for (int i = 0; i < glyphs.count; i++)
+                webGLBatchHashesBuffer.Add(glyphs[i]);
+
+            if (!WebGLEmoji.TryRenderEmojiBatch(webGLBatchHashesBuffer, emojiPixelSize, out var batchResult))
             {
-                Cat.MeowWarn($"[EmojiFont] WebGL batch render failed for {filteredGlyphs.Count} glyphs");
-                return 0;
+                Cat.MeowWarn($"[EmojiFont] WebGL batch render failed for {glyphs.count} glyphs");
+                return null;
             }
 
-            var atlas = GlyphAtlas.Emoji;
-            long varHash = GlyphAtlas.DefaultVarHash(FontDataHash);
-            int totalAdded = 0;
+            var rendered = new RenderedGlyphData[glyphs.count];
 
-            for (int i = 0; i < batchResult.count; i++)
+            int count = Math.Min(batchResult.count, glyphs.count);
+            for (int i = 0; i < count; i++)
             {
                 WebGLEmoji.GetBatchMetrics(i, out int w, out int h, out int bearingX, out int bearingY, out float advanceX);
 
-                if (w == 0 || h == 0)
-                    continue;
+                rendered[i].width = w;
+                rendered[i].height = h;
+                rendered[i].bearingX = bearingX;
+                rendered[i].bearingY = bearingY;
+                rendered[i].advanceX = advanceX > 0 ? advanceX : w;
+                rendered[i].isBGRA = false;
+
+                if (w == 0 || h == 0) continue;
 
                 int pixelOffset = WebGLEmoji.GetBatchPixelOffset(i);
                 int pixelBytes = w * h * 4;
@@ -746,31 +748,40 @@ namespace LightSide
                 {
                     Buffer.MemoryCopy(srcBase, dst, pixelBytes, pixelBytes);
                 }
+                rendered[i].rgbaPixels = pixels;
+            }
 
-                var rendered = new RenderedGlyphData
-                {
-                    width = w,
-                    height = h,
-                    bearingX = bearingX,
-                    bearingY = bearingY,
-                    advanceX = advanceX > 0 ? advanceX : w,
-                    rgbaPixels = pixels,
-                    isBGRA = false
-                };
+            WebGLEmoji.FreeBatchData();
+            return rendered;
+        }
 
-                var glyphId = filteredGlyphs[i];
-                var metrics = ComputeGlyphMetrics(glyphId, rendered);
+        private int PackRenderedBatchWebGL(object renderedObj, PreparedBatch batch)
+        {
+            if (renderedObj is not RenderedGlyphData[] rendered) return 0;
+
+            var toRender = batch.filteredGlyphs;
+            var atlas = GlyphAtlas.Emoji;
+            long varHash = GlyphAtlas.DefaultVarHash(FontDataHash);
+            int totalAdded = 0;
+
+            int count = Math.Min(rendered.Length, toRender.count);
+            for (int i = 0; i < count; i++)
+            {
+                ref var data = ref rendered[i];
+                if (data.width == 0 || data.height == 0) continue;
+
+                var glyphId = toRender[i];
+                var metrics = ComputeGlyphMetrics(glyphId, data);
                 var entry = atlas.EnsureEmojiGlyph(varHash, glyphId, FontDataHash,
-                    pixels, w, h, false, metrics);
+                    data.rgbaPixels, data.width, data.height, false, metrics);
 
                 if (entry.encodedTile >= 0)
                 {
-                    RegisterGlyphFromAtlas(glyphId, rendered, entry);
+                    RegisterGlyphFromAtlas(glyphId, data, entry);
                     totalAdded++;
                 }
             }
 
-            WebGLEmoji.FreeBatchData();
             return totalAdded;
         }
 

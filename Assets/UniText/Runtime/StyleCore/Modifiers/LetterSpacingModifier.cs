@@ -49,7 +49,7 @@ namespace LightSide
             public float baselineY;
             public int fontId;
             public long varHash48;
-            public Color32 color;
+            public int cluster;
         }
 
         private KashidaSegment[] kashidaSegments;
@@ -76,7 +76,6 @@ namespace LightSide
 
             uniText.TextProcessor.Shaped += OnShaped;
             uniText.Rebuilding += OnRebuilding;
-            uniText.MeshGenerator.onAfterPage += OnAfterPage;
             uniText.MeshGenerator.onGlyph += OnMeshGlyph;
         }
 
@@ -84,7 +83,6 @@ namespace LightSide
         {
             uniText.TextProcessor.Shaped -= OnShaped;
             uniText.Rebuilding -= OnRebuilding;
-            uniText.MeshGenerator.onAfterPage -= OnAfterPage;
             uniText.MeshGenerator.onGlyph -= OnMeshGlyph;
         }
 
@@ -270,9 +268,6 @@ namespace LightSide
             }
         }
 
-        /// <summary>
-        /// Sets kashida flags on clusters of connected base glyph pairs in cursive runs.
-        /// </summary>
         private void FlagKashidaPairs(
             ShapedGlyph[] glyphs, ShapedRun[] runs, int runCount,
             float[] buffer, int bufLen,
@@ -376,12 +371,16 @@ namespace LightSide
         /// </summary>
         private void OnMeshGlyph()
         {
+            var gen = uniText.MeshGenerator;
+
+            if (!gen.isVirtualGlyph)
+                EmitKashidaForCurrentCluster(gen);
+
             if (!hasCompressionScales) return;
 
             var scaleBuf = scaleAttribute?.buffer.data;
             if (scaleBuf == null) return;
 
-            var gen = UniTextMeshGenerator.Current;
             var cluster = gen.currentCluster;
             if ((uint)cluster >= (uint)scaleBuf.Length) return;
 
@@ -389,7 +388,7 @@ namespace LightSide
             if (scale == 0f) return;
 
             var verts = gen.Vertices;
-            var vi = gen.vertexCount - 4;
+            var vi = gen.faceBaseIdx;
 
             var centerX = (verts[vi].x + verts[vi + 2].x) * 0.5f;
             var leftX = centerX + (verts[vi].x - centerX) * scale;
@@ -401,11 +400,8 @@ namespace LightSide
             verts[vi + 3].x = rightX;
         }
 
-        private void OnAfterPage()
+        private void EmitKashidaForCurrentCluster(UniTextMeshGenerator gen)
         {
-            var gen = UniTextMeshGenerator.Current;
-            if (gen == null) return;
-
             if (!kashidaComputed)
             {
                 ComputeKashidaSegments(gen);
@@ -413,12 +409,24 @@ namespace LightSide
             }
 
             if (kashidaSegmentCount == 0) return;
-            RenderKashidaSegments(gen);
+
+            var flags = kashidaAttribute?.buffer.data;
+            if (flags == null) return;
+
+            var cluster = gen.currentCluster;
+            if ((uint)cluster >= (uint)flags.Length || flags[cluster] == 0) return;
+
+            for (var i = 0; i < kashidaSegmentCount; i++)
+            {
+                if (kashidaSegments[i].cluster != cluster) continue;
+
+                var fontProvider = uniText.FontProvider;
+                var atlas = GlyphAtlas.GetInstance(gen.RenderMode);
+                DrawKashida(gen, fontProvider, atlas, ref kashidaSegments[i]);
+                return;
+            }
         }
 
-        /// <summary>
-        /// Builds kashida segments from positioned glyphs that have kashida flags.
-        /// </summary>
         private void ComputeKashidaSegments(UniTextMeshGenerator gen)
         {
             kashidaSegmentCount = 0;
@@ -436,7 +444,6 @@ namespace LightSide
             var shapedGlyphs = buffers.shapedGlyphs.data;
             var offsetX = gen.offsetX;
             var offsetY = gen.offsetY;
-            var defaultColor = gen.defaultColor;
             var fontProvider = uniText.FontProvider;
 
             for (var i = 0; i < glyphCount; i++)
@@ -466,18 +473,14 @@ namespace LightSide
 
                 var baselineY = offsetY - glyph.y;
 
-                var color = ColorModifier.TryGetColor(buffers, cluster, out var customColor)
-                    ? customColor : defaultColor;
-                color.a = defaultColor.a;
-
                 var glyphFont = fontProvider.GetFontAsset(glyph.fontId);
                 var varHash = glyphFont != null ? buffers.ResolveVarHash48(glyph.fontId, glyphFont) : 0L;
 
-                AddKashidaSegment(kashidaStart, kashidaEnd, baselineY, glyph.fontId, varHash, color);
+                AddKashidaSegment(kashidaStart, kashidaEnd, baselineY, glyph.fontId, varHash, cluster);
             }
         }
 
-        private void AddKashidaSegment(float startX, float endX, float baselineY, int fontId, long varHash48, Color32 color)
+        private void AddKashidaSegment(float startX, float endX, float baselineY, int fontId, long varHash48, int cluster)
         {
             UniTextArrayPool<KashidaSegment>.GrowDouble(ref kashidaSegments, ref kashidaSegmentCapacity, kashidaSegmentCount);
 
@@ -488,25 +491,17 @@ namespace LightSide
                 baselineY = baselineY,
                 fontId = fontId,
                 varHash48 = varHash48,
-                color = color
+                cluster = cluster
             };
-        }
-
-        private void RenderKashidaSegments(UniTextMeshGenerator gen)
-        {
-            var fontProvider = uniText.FontProvider;
-            var atlas = GlyphAtlas.GetInstance(gen.RenderMode);
-
-            for (var i = 0; i < kashidaSegmentCount; i++)
-            {
-                ref var seg = ref kashidaSegments[i];
-                DrawKashida(gen, fontProvider, atlas, ref seg);
-            }
         }
 
         /// <summary>
         /// Draws a single kashida bar using 9-slice SDF rendering of the tatweel glyph.
-        /// Samples the center column of the tatweel SDF and stretches horizontally.
+        /// Each kashida is split into 3 horizontal slices: left cap (UV.x: -sdfPadding..centerX),
+        /// center stretch (UV.x: centerX constant), right cap (UV.x: centerX..aspect+sdfPadding).
+        /// This keeps tatweel's SDF cap shape on the ends while stretching the middle, so an
+        /// outline modifier (which dilates the SDF) draws a clean periphery on every kashida.
+        /// If the kashida is too narrow to fit two caps, falls back to one fully stretched quad.
         /// </summary>
         private static void DrawKashida(UniTextMeshGenerator gen, UniTextFontProvider fontProvider,
             GlyphAtlas atlas, ref KashidaSegment seg)
@@ -545,10 +540,59 @@ namespace LightSide
 
             var topY = seg.baselineY + (bearingYNorm + padEm) * metricsFactor;
             var bottomY = topY - (1f + sdfPadding * 2f) * glyphH * metricsFactor;
+            var quadHeight = topY - bottomY;
 
             var leftPad = (bearingXNorm - padEm) * metricsFactor;
             var rightPad = (bearingXNorm + glyphW + padEm - advanceNorm) * metricsFactor;
+            var quadLeftX = seg.startX + leftPad;
+            var quadRightX = seg.endX + rightPad;
 
+            var tileIdx = (float)(entry.encodedTile + entry.pageIndex * GlyphAtlas.PageStride);
+            var centerX = aspect * 0.5f;
+            var glyphHeightLocal = metrics.height * (metricsFactor / upem);
+            var capWidth = (centerX + sdfPadding) * glyphHeightLocal;
+            var totalWidth = quadRightX - quadLeftX;
+
+            const float uvBottom = -sdfPadding;
+            const float uvTop = 1f + sdfPadding;
+            var uvLeftCap = -sdfPadding;
+            var uvRightCap = aspect + sdfPadding;
+
+            if (totalWidth < 2f * capWidth)
+            {
+                EmitKashidaQuad(gen, ref seg, font, metricsFactor, quadHeight,
+                    quadLeftX, quadRightX, bottomY, topY,
+                    uvLeftCap, uvRightCap, uvBottom, uvTop, tileIdx, glyphH, aspect,
+                    tatweelIndex, varHash, in entry);
+                return;
+            }
+
+            var leftCapEnd = quadLeftX + capWidth;
+            var rightCapStart = quadRightX - capWidth;
+
+            EmitKashidaQuad(gen, ref seg, font, metricsFactor, quadHeight,
+                quadLeftX, leftCapEnd, bottomY, topY,
+                uvLeftCap, centerX, uvBottom, uvTop, tileIdx, glyphH, aspect,
+                tatweelIndex, varHash, in entry);
+
+            EmitKashidaQuad(gen, ref seg, font, metricsFactor, quadHeight,
+                leftCapEnd, rightCapStart, bottomY, topY,
+                centerX, centerX, uvBottom, uvTop, tileIdx, glyphH, aspect,
+                tatweelIndex, varHash, in entry);
+
+            EmitKashidaQuad(gen, ref seg, font, metricsFactor, quadHeight,
+                rightCapStart, quadRightX, bottomY, topY,
+                centerX, uvRightCap, uvBottom, uvTop, tileIdx, glyphH, aspect,
+                tatweelIndex, varHash, in entry);
+        }
+
+        private static void EmitKashidaQuad(UniTextMeshGenerator gen, ref KashidaSegment seg,
+            UniTextFont font, float metricsFactor, float quadHeight,
+            float leftX, float rightX, float bottomY, float topY,
+            float uvLeft, float uvRight, float uvBottom, float uvTop,
+            float tileIdx, float glyphH, float aspect,
+            uint tatweelIndex, long varHash, in GlyphAtlas.GlyphEntry entry)
+        {
             gen.EnsureCapacity(4, 6);
 
             var verts = gen.Vertices;
@@ -560,21 +604,15 @@ namespace LightSide
             var vertIdx = gen.vertexCount;
             var triIdx = gen.triangleCount;
 
-            var tileIdx = (float)(entry.encodedTile + entry.pageIndex * GlyphAtlas.PageStride);
-            var centerX = aspect * 0.5f;
+            verts[vertIdx]     = new Vector3(leftX, bottomY, 0);
+            verts[vertIdx + 1] = new Vector3(leftX, topY, 0);
+            verts[vertIdx + 2] = new Vector3(rightX, topY, 0);
+            verts[vertIdx + 3] = new Vector3(rightX, bottomY, 0);
 
-            verts[vertIdx]     = new Vector3(seg.startX + leftPad, bottomY, 0);
-            verts[vertIdx + 1] = new Vector3(seg.startX + leftPad, topY, 0);
-            verts[vertIdx + 2] = new Vector3(seg.endX + rightPad, topY, 0);
-            verts[vertIdx + 3] = new Vector3(seg.endX + rightPad, bottomY, 0);
-
-            var uvBottom = -sdfPadding;
-            var uvTop = 1f + sdfPadding;
-
-            uvData[vertIdx]     = new Vector4(centerX, uvBottom, tileIdx, glyphH);
-            uvData[vertIdx + 1] = new Vector4(centerX, uvTop, tileIdx, glyphH);
-            uvData[vertIdx + 2] = new Vector4(centerX, uvTop, tileIdx, glyphH);
-            uvData[vertIdx + 3] = new Vector4(centerX, uvBottom, tileIdx, glyphH);
+            uvData[vertIdx]     = new Vector4(uvLeft, uvBottom, tileIdx, glyphH);
+            uvData[vertIdx + 1] = new Vector4(uvLeft, uvTop, tileIdx, glyphH);
+            uvData[vertIdx + 2] = new Vector4(uvRight, uvTop, tileIdx, glyphH);
+            uvData[vertIdx + 3] = new Vector4(uvRight, uvBottom, tileIdx, glyphH);
 
             var uv1Val = new Vector2(aspect, 0);
             uv1Data[vertIdx]     = uv1Val;
@@ -582,10 +620,11 @@ namespace LightSide
             uv1Data[vertIdx + 2] = uv1Val;
             uv1Data[vertIdx + 3] = uv1Val;
 
-            cols[vertIdx]     = seg.color;
-            cols[vertIdx + 1] = seg.color;
-            cols[vertIdx + 2] = seg.color;
-            cols[vertIdx + 3] = seg.color;
+            var defaultColor = gen.defaultColor;
+            cols[vertIdx]     = defaultColor;
+            cols[vertIdx + 1] = defaultColor;
+            cols[vertIdx + 2] = defaultColor;
+            cols[vertIdx + 3] = defaultColor;
 
             var localI0 = vertIdx - gen.CurrentSegmentVertexStart;
             tris[triIdx]     = localI0;
@@ -597,6 +636,20 @@ namespace LightSide
 
             gen.vertexCount += 4;
             gen.triangleCount += 6;
+
+            gen.font = font;
+            gen.fontMetricFactor = metricsFactor;
+            gen.height = quadHeight;
+            gen.currentCluster = seg.cluster;
+            gen.cursorX = leftX;
+            gen.baselineY = seg.baselineY;
+            gen.faceBaseIdx = vertIdx;
+            gen.currentMaxGlyphExtent = 0f;
+            gen.isVirtualGlyph = true;
+            gen.onGlyph?.Invoke();
+
+            gen.RequestBandUpgradeIfNeeded(GlyphAtlas.MakeKey(varHash, tatweelIndex), tatweelIndex, in entry,
+                font, varHash, null, glyphH, aspect);
         }
 
         /// <summary>
@@ -614,9 +667,6 @@ namespace LightSide
                 || script == UnicodeScript.HanifiRohingya;
         }
 
-        /// <summary>
-        /// Returns the script for a shaped run by sampling its first codepoint.
-        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static UnicodeScript GetRunScript(ref ShapedRun run,
             UnicodeScript[] scripts, int cpCount)

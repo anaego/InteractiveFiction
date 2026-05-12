@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 4c704cb6cc0ed51439f149e2e7c32fbd
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/StyleCore/Modifiers/GlobalSettingsGradientProvider.cs
+  uploadId: 908872

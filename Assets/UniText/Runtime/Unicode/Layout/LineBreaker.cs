@@ -56,12 +56,6 @@ namespace LightSide
             orderedRunCount = tempOrderedRunCount;
         }
 
-        /// <summary>
-        /// Gets the break type after the specified codepoint index.
-        /// </summary>
-        /// <remarks>
-        /// breakTypes[i+1] represents the break type between codepoint[i] and codepoint[i+1].
-        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static bool IsHangingWhitespace(int codepoint) => codepoint == UnicodeData.Space || codepoint == UnicodeData.Tab;
 
@@ -70,6 +64,24 @@ namespace LightSide
         {
             var breakIndex = index + 1;
             return (uint)breakIndex < (uint)breakTypes.Length ? breakTypes[breakIndex] : LineBreakType.None;
+        }
+
+        /// <summary>
+        /// True if the line break class identifies a Hangul syllable or jamo.
+        /// </summary>
+        /// <remarks>
+        /// Test is on <see cref="LineBreakClass"/> rather than <see cref="UnicodeScript"/>
+        /// because script analysis propagates Hangul through adjacent whitespace (Common
+        /// script), which would collapse all breaks in Korean text including after spaces.
+        /// Line break classes are assigned per Unicode codepoint and never propagate, so
+        /// <c>SP</c> (space) remains distinct and only real Hangul syllables/jamo pair up.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsHangulBreakClass(LineBreakClass cls)
+        {
+            return cls == LineBreakClass.H2 || cls == LineBreakClass.H3 ||
+                   cls == LineBreakClass.JL || cls == LineBreakClass.JV ||
+                   cls == LineBreakClass.JT;
         }
 
         private void WrapLines(
@@ -93,11 +105,22 @@ namespace LightSide
             var rawMargin = (uint)lineStartCp < (uint)startMargins.Length ? startMargins[lineStartCp] : 0f;
             var effectiveMaxWidth = maxWidth - rawMargin;
 
+            var unicodeData = UnicodeData.Provider;
+            var leftIsHangul = cpCount > 0 && IsHangulBreakClass(unicodeData.GetLineBreakClass(codepoints[0]));
+
             for (var cpIdx = 0; cpIdx < cpCount; cpIdx++)
             {
                 lineWidth += cpWidths[cpIdx];
 
                 var breakType = GetBreakTypeAfter(breakTypes, cpIdx);
+                var rightIsHangul = false;
+                if (cpIdx + 1 < cpCount)
+                {
+                    rightIsHangul = IsHangulBreakClass(unicodeData.GetLineBreakClass(codepoints[cpIdx + 1]));
+                    if (breakType == LineBreakType.Optional && leftIsHangul && rightIsHangul)
+                        breakType = LineBreakType.None;
+                }
+                leftIsHangul = rightIsHangul;
 
                 while (lineWidth > effectiveMaxWidth)
                 {
@@ -158,6 +181,25 @@ namespace LightSide
 
             if (lineStartCp < cpCount)
                 CreateLineFromCodepoints(codepoints, cpWidths, runs, glyphs, lineStartCp, cpCount - 1, rawMargin);
+
+            if (lineStartCp == cpCount && cpCount > 0)
+            {
+                var lastCpClass = UnicodeData.Provider.GetLineBreakClass(codepoints[cpCount - 1]);
+                if (lastCpClass == LineBreakClass.BK || lastCpClass == LineBreakClass.CR ||
+                    lastCpClass == LineBreakClass.LF || lastCpClass == LineBreakClass.NL)
+                {
+                    EnsureLineCapacity(tempLineCount + 1);
+                    tempLines[tempLineCount++] = new TextLine
+                    {
+                        range = new TextRange(cpCount, 0),
+                        runStart = tempOrderedRunCount,
+                        runCount = 0,
+                        width = 0,
+                        trailingWhitespace = 0,
+                        startMargin = 0
+                    };
+                }
+            }
         }
 
         private void CreateLineFromCodepoints(
@@ -218,6 +260,7 @@ namespace LightSide
                     width = partialWidth,
                     direction = run.direction,
                     bidiLevel = run.bidiLevel,
+                    language = run.language,
                     fontId = run.fontId
                 };
                 lineRunCount++;
@@ -328,6 +371,7 @@ namespace LightSide
                     width = wsWidth,
                     direction = run.direction,
                     bidiLevel = paragraphBaseLevel,
+                    language = run.language,
                     fontId = run.fontId
                 };
 

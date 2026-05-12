@@ -218,6 +218,87 @@ namespace LightSide
 
         public static bool IsInitialized => provider != null;
 
+        #region Public character properties (for custom modifiers & parse rules)
+
+        /// <summary>
+        /// Returns the simple uppercase mapping for a codepoint, falling back to the codepoint itself
+        /// when no mapping is defined. Backed by UnicodeData.txt so behavior is identical across
+        /// Mono/IL2CPP/standard .NET — unlike <c>char.ToUpperInvariant</c>, which has gaps for
+        /// codepoints such as Greek final sigma U+03C2.
+        /// </summary>
+        /// <remarks>
+        /// "Simple" means a single-codepoint default mapping that ignores locale and the conditional
+        /// rules in SpecialCasing.txt (Turkish dotless I, Lithuanian dot-above, German ß → SS, etc.).
+        /// Use this in custom <c>BaseModifier</c> implementations for predictable case conversion.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int GetSimpleUppercase(int codepoint) => Provider.GetSimpleUppercase(codepoint);
+
+        /// <summary>
+        /// Returns the simple lowercase mapping for a codepoint, falling back to the codepoint itself
+        /// when no mapping is defined. See <see cref="GetSimpleUppercase"/> for the rationale.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int GetSimpleLowercase(int codepoint) => Provider.GetSimpleLowercase(codepoint);
+
+        /// <summary>
+        /// Returns the simple titlecase mapping for a codepoint, falling back to the codepoint itself
+        /// when no mapping is defined. Differs from uppercase only for digraph letters such as
+        /// U+01C5 (ǅ) — uppercase Ǆ, titlecase ǅ, lowercase ǆ.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int GetSimpleTitlecase(int codepoint) => Provider.GetSimpleTitlecase(codepoint);
+
+        /// <summary>
+        /// Returns the Unicode General Category of a codepoint. Useful for filtering codepoints in
+        /// custom modifiers — apply only to letters (<c>Lu/Ll/Lt/Lm/Lo</c>), skip combining marks
+        /// (<c>Mn/Mc/Me</c>), select punctuation (<c>Pc/Pd/Ps/Pe/Pi/Pf/Po</c>), and so on.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static GeneralCategory GetGeneralCategory(int codepoint) => Provider.GetGeneralCategory(codepoint);
+
+        /// <summary>
+        /// Returns the Unicode Script of a codepoint (UAX #24). Useful for script-conditional
+        /// modifiers — for example applying a stylistic effect only to Devanagari or only to Han.
+        /// Values <see cref="UnicodeScript.Common"/> and <see cref="UnicodeScript.Inherited"/> are
+        /// shared across scripts (punctuation, combining marks).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static UnicodeScript GetScript(int codepoint) => Provider.GetScript(codepoint);
+
+        /// <summary>
+        /// Returns <see langword="true"/> when the codepoint has the Extended_Pictographic property
+        /// (UTS #51). Distinct from emoji presentation: pictographic glyphs that may render either
+        /// as text or as emoji depending on context.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsExtendedPictographic(int codepoint) => Provider.IsExtendedPictographic(codepoint);
+
+        /// <summary>
+        /// Returns <see langword="true"/> when the codepoint defaults to emoji-style presentation
+        /// (UTS #51 Emoji_Presentation). Use this to skip emoji glyphs in text-only effects
+        /// (color, gradient, outline) without relying on the live mesh-pass <c>font.IsColor</c> flag.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsEmojiPresentation(int codepoint) => Provider.IsEmojiPresentation(codepoint);
+
+        /// <summary>
+        /// Returns <see langword="true"/> when the codepoint is an emoji that accepts a skin-tone
+        /// modifier (U+1F3FB..U+1F3FF) immediately after it (UTS #51 Emoji_Modifier_Base).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsEmojiModifierBase(int codepoint) => Provider.IsEmojiModifierBase(codepoint);
+
+        /// <summary>
+        /// Returns <see langword="true"/> when the codepoint has the Default_Ignorable_Code_Point
+        /// property (formatting characters, variation selectors, ZWJ/ZWNJ, etc.). Custom modifiers
+        /// that walk codepoints to compute statistics or apply effects should typically skip these.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsDefaultIgnorable(int codepoint) => Provider.IsDefaultIgnorable(codepoint);
+
+        #endregion
+
 
         public static void EnsureInitialized()
         {

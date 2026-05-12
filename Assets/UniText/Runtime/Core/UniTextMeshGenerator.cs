@@ -5,50 +5,118 @@ using UnityEngine;
 namespace LightSide
 {
     /// <summary>
-    /// Contains all data needed to render a text mesh segment in Unity.
+    /// Controls the rendering order of a sub-mesh relative to the base text pass.
     /// </summary>
     /// <remarks>
-    /// Returned by <see cref="UniTextMeshGenerator.ApplyMeshesToUnity"/> for each rendering target.
-    /// At most 2 entries: SDF mesh (index 0) and emoji mesh (index 1).
+    /// <para>
+    /// Canvas renders children in sibling order: later siblings appear visually on top.
+    /// <see cref="CollectRenderData"/> sorts <see cref="UniTextRenderData"/> segments by
+    /// (<see cref="order"/>, <see cref="UniTextRenderData.sortIndex"/>) so that base text always sits
+    /// between underlay and overlay passes.
+    /// </para>
+    /// </remarks>
+    public enum RenderOrder : byte
+    {
+        /// <summary>Rendered before the base text (behind it).</summary>
+        Under = 0,
+        /// <summary>The base text pass (SDF or emoji).</summary>
+        Base = 1,
+        /// <summary>Rendered after the base text (in front of it).</summary>
+        Over = 2,
+    }
+
+    /// <summary>
+    /// Layering of an <see cref="EffectModifier"/> duplicate quad relative to the face within the
+    /// SDF mesh. Effect modifiers read <see cref="UniTextMeshGenerator.currentEffectPass"/> when a
+    /// quad is enqueued and route its triangles into the matching pass buffer.
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item><see cref="PreFace"/> — triangles are prepended to the index buffer so the face draws
+    /// on top of the duplicate (standard outline / shadow / extrude behavior under glyphs).</item>
+    /// <item><see cref="PostFace"/> — triangles are appended after the face so the duplicate draws
+    /// on top of the face (used by overlay decoration lines whose effects must sit above text).</item>
+    /// </list>
+    /// </remarks>
+    public enum EffectPass : byte
+    {
+        PreFace = 0,
+        PostFace = 1,
+    }
+
+    /// <summary>
+    /// Raw geometry slice describing a single text/emoji/sub-mesh render segment.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Holds <b>references</b> to pooled vertex/UV/color/index arrays plus offset+count into them.
+    /// The consumer (canvas: <see cref="UniText.UpdateSubMeshes"/>; world:
+    /// <see cref="UniTextWorldBatcher"/>) does whatever it needs with this data — either uploads into
+    /// a reusable <see cref="Mesh"/> for <c>CanvasRenderer</c>, or copies into its combined-mesh
+    /// buffers for world-space batching.
+    /// </para>
+    /// <para>
+    /// Array references are valid <b>only until the next collect cycle</b> on the same generator —
+    /// pooled buffers can be returned or regrown. Consumers must read/copy immediately and not retain
+    /// references across frames.
+    /// </para>
     /// </remarks>
     public struct UniTextRenderData
     {
-        /// <summary>The Unity mesh containing vertex, UV, color, and triangle data.</summary>
-        public Mesh mesh;
-        
         /// <summary>The font identifier this render data belongs to.</summary>
         public int fontId;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="UniTextRenderData"/> struct.
+        /// Optional custom material. When <see langword="null"/>, the renderer uses the default
+        /// SDF/MSDF or emoji material for this <see cref="fontId"/>.
         /// </summary>
-        public UniTextRenderData(Mesh mesh, int fontId)
-        {
-            this.mesh = mesh;
-            this.fontId = fontId;
-        }
+        public Material materialOverride;
+
+        /// <summary>
+        /// Optional atlas override for <see cref="materialOverride"/>. When <see langword="null"/>,
+        /// the renderer uses the default atlas for this <see cref="fontId"/>.
+        /// </summary>
+        public GlyphAtlas atlasOverride;
+
+        /// <summary>Render pass this segment belongs to (sorts relative to base text).</summary>
+        public RenderOrder order;
+
+        /// <summary>Stable sort key within the same <see cref="order"/> group (lower renders first).</summary>
+        public int sortIndex;
+
+        /// <summary>Vertex positions array (pooled). Read <c>[vertexOffset, vertexOffset+vertexCount)</c>.</summary>
+        public Vector3[] vertices;
+        /// <summary>UV0 array (pooled). Must always be valid when <see cref="vertexCount"/> &gt; 0.</summary>
+        public Vector4[] uvs0;
+        /// <summary>UV1 array (pooled). <see langword="null"/> or ignored when <see cref="hasUv1"/> is false.</summary>
+        public Vector4[] uvs1;
+        /// <summary>UV2 array (pooled). <see langword="null"/> or ignored when <see cref="hasUv2"/> is false.</summary>
+        public Vector4[] uvs2;
+        /// <summary>UV3 array (pooled). <see langword="null"/> or ignored when <see cref="hasUv3"/> is false.</summary>
+        public Vector4[] uvs3;
+        /// <summary>Vertex colors array (pooled).</summary>
+        public Color32[] colors;
+        /// <summary>Triangle indices array (pooled). Indices are relative to the <see cref="vertices"/> array
+        /// start (not to <see cref="vertexOffset"/>). Read <c>[triangleOffset, triangleOffset+triangleCount)</c>.</summary>
+        public int[] triangles;
+
+        /// <summary>Start index in <see cref="vertices"/>/<see cref="uvs0"/>/<see cref="colors"/> etc.</summary>
+        public int vertexOffset;
+        /// <summary>Number of vertices in this segment (starting at <see cref="vertexOffset"/>).</summary>
+        public int vertexCount;
+        /// <summary>Start index in <see cref="triangles"/>.</summary>
+        public int triangleOffset;
+        /// <summary>Number of triangle indices in this segment.</summary>
+        public int triangleCount;
+
+        /// <summary>When <see langword="true"/>, <see cref="uvs1"/> is valid and should be uploaded.</summary>
+        public bool hasUv1;
+        /// <summary>When <see langword="true"/>, <see cref="uvs2"/> is valid and should be uploaded.</summary>
+        public bool hasUv2;
+        /// <summary>When <see langword="true"/>, <see cref="uvs3"/> is valid and should be uploaded.</summary>
+        public bool hasUv3;
     }
 
-
-    /// <summary>
-    /// Describes a single effect render pass that modifies generator buffers before mesh upload.
-    /// </summary>
-    /// <remarks>
-    /// Registered by subscribers via <see cref="UniTextMeshGenerator.effectPasses"/>.
-    /// The system calls <see cref="apply"/> before mesh upload and <see cref="revert"/> after,
-    /// without knowledge of what the callbacks do internally.
-    /// </remarks>
-    public struct EffectPass
-    {
-        /// <summary>Writes effect data (UV2, vertex shifts) into generator buffers.</summary>
-        public Action apply;
-
-        /// <summary>Reverts effect data (clears UV2, restores vertices) in generator buffers.</summary>
-        public Action revert;
-
-        /// <summary>When true, the pass modifies vertex positions (requires SetVertices re-upload).</summary>
-        public bool hasVertexShifts;
-    }
 
     /// <summary>
     /// Converts positioned glyphs into Unity mesh data for text rendering.
@@ -72,7 +140,7 @@ namespace LightSide
     /// <code>
     /// generator.SetRectOffset(rect);
     /// generator.GenerateMeshDataOnly(positionedGlyphs);
-    /// var renderData = generator.ApplyMeshesToUnity(meshProvider);
+    /// var renderData = generator.CollectRenderData();
     /// // Use renderData to render each segment
     /// generator.ReturnInstanceBuffers();
     /// </code>
@@ -83,16 +151,12 @@ namespace LightSide
     /// <seealso cref="UniTextRenderData"/>
     public class UniTextMeshGenerator
     {
-        [ThreadStatic] private static UniTextMeshGenerator current;
-
         /// <summary>
-        /// Gets the currently active mesh generator on this thread (set during mesh generation).
+        /// Base UV-space padding (normalized by glyph height) allocated around every face quad.
+        /// Face and effect modifiers that expand the quad must subtract this baseline from their
+        /// requested extent when computing the expansion delta.
         /// </summary>
-        /// <remarks>
-        /// Used by text modifiers to access the current generator instance during callbacks.
-        /// Only valid within <see cref="onGlyph"/>, <see cref="onAfterPage"/>, and similar callbacks.
-        /// </remarks>
-        public static UniTextMeshGenerator Current => current;
+        public const float DefaultSdfPadding = 0.02f;
 
         /// <summary>The cluster index of the glyph currently being processed.</summary>
         /// <remarks>Valid during <see cref="onGlyph"/> callback. Maps back to codepoint indices.</remarks>
@@ -105,6 +169,11 @@ namespace LightSide
         /// <summary>Y coordinate of the text baseline for the current glyph.</summary>
         /// <remarks>Valid during <see cref="onGlyph"/> callback.</remarks>
         public float baselineY;
+
+        /// <summary>X coordinate of the cursor position (pen position) for the current glyph.</summary>
+        /// <remarks>Valid during <see cref="onGlyph"/> callback. Use as pivot for per-glyph scaling
+        /// so that bearing and width scale proportionally with per-cluster advance changes.</remarks>
+        public float cursorX;
 
         /// <summary>Current font scale factor (FontSize / font.UnitsPerEm).</summary>
         public float scale;
@@ -145,10 +214,17 @@ namespace LightSide
         /// <summary>Current number of triangle indices in the mesh buffers.</summary>
         public int triangleCount;
 
+        /// <summary>
+        /// Index of the first vertex of the face quad of the glyph currently being processed.
+        /// Stable across all <see cref="onGlyph"/> invocations for a single glyph, even when
+        /// modifiers append additional geometry that grows <see cref="vertexCount"/>.
+        /// </summary>
+        public int faceBaseIdx;
+
 
         private PooledBuffer<Vector3> vertices;
         private PooledBuffer<Vector4> uvs0;
-        private PooledBuffer<Vector2> uvs1;
+        private PooledBuffer<Vector4> uvs1;
         private PooledBuffer<Vector4> uvs2;
         private PooledBuffer<Vector4> uvs3;
         private PooledBuffer<Color32> colors;
@@ -180,6 +256,11 @@ namespace LightSide
         internal PooledBuffer<long> usedEmojiKeys;
 
         [ThreadStatic] private static FastLongDictionary<GlyphAtlas.GlyphEntry> glyphEntryCache;
+
+        [ThreadStatic] private static PooledBuffer<int> sharedPreFaceTris;
+        [ThreadStatic] private static int sharedPreFaceTriCount;
+        [ThreadStatic] private static PooledBuffer<int> sharedPostFaceTris;
+        [ThreadStatic] private static int sharedPostFaceTriCount;
 
         /// <summary>
         /// Looks up a glyph entry from the per-frame cache. Returns true if found (repeated glyph).
@@ -220,17 +301,36 @@ namespace LightSide
 
         private readonly UniTextFontProvider fontProvider;
         private readonly UniTextBuffers buf;
-        private float lossyScale = 1f;
-        private bool hasWorldCamera;
 
-        /// <summary>Invoked after all SDF glyphs have been processed, before the segment is closed.</summary>
-        /// <remarks>Decorations (underline, strikethrough) write into the open segment here.</remarks>
-        public Action onAfterPage;
+        /// <summary>
+        /// Invoked after the main glyph loop completes, before any finalization phase.
+        /// Subscribers may emit additional quads into the open vertex stream; if they call
+        /// <see cref="onGlyph"/> for each emitted quad with <see cref="isVirtualGlyph"/> set,
+        /// per-glyph modifiers (color, gradient, bold) and effect modifiers (outline, shadow,
+        /// extrude) pick up the new quads through the standard pipeline.
+        /// </summary>
+        /// <remarks>
+        /// Used by decoration modifiers (underline, strikethrough, kashida) to add their
+        /// geometry while staying within the same effect/color/etc pipeline as primary glyphs.
+        /// </remarks>
+        public Action onMainPassComplete;
+
+        /// <summary>
+        /// Finalization phase for the main glyph pass (SDF). Runs after <see cref="onMainPassComplete"/>
+        /// and before the emoji segment is processed.
+        /// </summary>
+        /// <remarks>
+        /// Effect modifiers flush queued effect requests here, appending duplicate quads (outline,
+        /// shadow, extrude) into the SDF segment. Subscribers that emit additional geometry MUST
+        /// emit it before the emoji segment runs — appending after the emoji block would corrupt
+        /// the emoji vertex/triangle ranges.
+        /// </remarks>
+        public Action onMainPassFinalize;
 
         /// <summary>Invoked for each glyph during mesh generation.</summary>
         /// <remarks>
         /// Primary callback for text modifiers to apply per-glyph effects.
-        /// Access current glyph data via <see cref="Current"/> or public fields.
+        /// Access current glyph data via the public state fields on this generator instance.
         /// </remarks>
         public Action onGlyph;
 
@@ -241,11 +341,68 @@ namespace LightSide
         public Action onRebuildStart;
 
         /// <summary>
-        /// Maximum effect extent (UV-space padding) requested for the current glyph.
-        /// Reset to 0 before each <see cref="onGlyph"/> invocation. Subscribers accumulate via max.
-        /// Read by <see cref="ExpandQuadForEffects"/> to determine quad expansion.
+        /// Invoked by <see cref="CollectRenderData"/> after base SDF/emoji segments are written to the
+        /// result buffer, but before the buffer is sorted and returned. Subscribers append their own
+        /// <see cref="UniTextRenderData"/> entries (each with a custom <see cref="UniTextRenderData.materialOverride"/>,
+        /// <see cref="UniTextRenderData.atlasOverride"/>, <see cref="UniTextRenderData.order"/> and
+        /// <see cref="UniTextRenderData.sortIndex"/>) to the provided list.
         /// </summary>
-        public float currentMaxEffectExtent;
+        /// <remarks>
+        /// After all subscribers run, the result buffer is stable-sorted by
+        /// (<see cref="UniTextRenderData.order"/>, <see cref="UniTextRenderData.sortIndex"/>), which
+        /// determines sibling order of <c>-_UTSM_-</c> renderers in <see cref="UniText.UpdateSubMeshes"/>.
+        /// </remarks>
+        public Action<List<UniTextRenderData>> onCollectSubMeshes;
+
+        /// <summary>
+        /// Maximum UV-space padding requested for the current glyph by any modifier.
+        /// Reset to 0 before each <see cref="onGlyph"/> invocation. Subscribers accumulate via max.
+        /// Read after <see cref="onGlyph"/> to decide atlas band upgrades.
+        /// </summary>
+        public float currentMaxGlyphExtent;
+
+        /// <summary>
+        /// True when the currently processed glyph is virtual (injected by a modifier — list marker,
+        /// ellipsis dot — and has no <see cref="ShapedGlyph"/> behind it).
+        /// </summary>
+        /// <remarks>
+        /// Modifiers that drive their behavior from shaping data (truncation flags, super/sub
+        /// position) must early-out on virtual glyphs to avoid acting on cluster indices that
+        /// belong to source text rather than the injected decoration.
+        /// </remarks>
+        public bool isVirtualGlyph;
+
+        /// <summary>
+        /// Determines where <see cref="EffectModifier"/> duplicate quads (outline, shadow, extrude)
+        /// land in the index buffer for the currently processed glyph.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Default is <see cref="EffectPass.PreFace"/> — duplicates are prepended before the face,
+        /// so the face perfectly covers them in its center and only the dilated rim shows through.
+        /// </para>
+        /// <para>
+        /// Decoration modifiers (overlay underline / strikethrough) that need their effects to sit
+        /// <em>above</em> text temporarily set this to <see cref="EffectPass.PostFace"/> while
+        /// emitting the line through <see cref="LineRenderHelper.DrawLine"/>; effect modifiers
+        /// consult this flag at <c>EnqueueEffectQuad</c> time, so it must be set before invoking
+        /// the per-glyph callback and restored afterwards.
+        /// </para>
+        /// </remarks>
+        public EffectPass currentEffectPass;
+
+        /// <summary>
+        /// Triangle-buffer index where <see cref="EffectPass.PostFace"/> triangles are inserted
+        /// during finalization. Negative means "append to the tail".
+        /// </summary>
+        /// <remarks>
+        /// Decoration modifiers that emit overlay lines latch this to <c>triangleCount</c> immediately
+        /// before adding their first line, so post-face effect triangles are inserted between the
+        /// face block and the line block. This makes the line perfectly cover its own outline in the
+        /// center (same painter relationship as <see cref="EffectPass.PreFace"/> has with the face),
+        /// while still keeping the line itself above face text.
+        /// </remarks>
+        public int postFaceInsertPoint;
 
         internal struct BandUpgradeRequest
         {
@@ -255,18 +412,10 @@ namespace LightSide
             public UniTextFont font;
             public long varHash48;
             public int[] ftCoords;
-            public UniTextBase.RenderModee mode;
+            public UniTextRenderMode mode;
         }
 
         internal readonly List<BandUpgradeRequest> bandUpgradeRequests = new();
-
-        /// <summary>Ordered list of effect render passes registered by subscribers.</summary>
-        /// <remarks>
-        /// Each entry provides apply/revert callbacks that modify generator buffers (UV2, vertices).
-        /// The system iterates this list to create per-pass CanvasRenderers.
-        /// Registration order determines render order (first = furthest back).
-        /// </remarks>
-        public readonly List<EffectPass> effectPasses = new();
 
         private Rect rectOffset;
 
@@ -288,7 +437,7 @@ namespace LightSide
         public float FontSize { get; set; } = 36f;
 
         /// <summary>Gets or sets the atlas mode (SDF or MSDF) for glyph lookup and material selection.</summary>
-        public UniTextBase.RenderModee RenderMode { get; set; }
+        public UniTextRenderMode RenderMode { get; set; }
 
         /// <summary>Gets a value indicating whether mesh data has been generated and is available.</summary>
         public bool HasGeneratedData => hasGeneratedData;
@@ -297,18 +446,18 @@ namespace LightSide
         public Vector3[] Vertices => vertices.data;
 
         /// <summary>
-        /// Scales a glyph quad (4 vertices) around its left edge and baseline.
+        /// Scales a glyph quad (4 vertices) around the cursor position and baseline.
         /// Used by SizeModifier, SmallCapsModifier, ScriptPositionModifier.
         /// </summary>
+        /// <param name="pivotX">Cursor position (pen X) — bearing and width scale proportionally from this pivot.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void ScaleGlyphQuad(Vector3[] verts, int baseIdx, float baselineY, float scale, float yOffset = 0f)
+        public static void ScaleGlyphQuad(Vector3[] verts, int baseIdx, float pivotX, float baselineY, float scale, float yOffset = 0f)
         {
-            var leftX = verts[baseIdx].x;
             var pivotY = baselineY + yOffset;
             for (var i = 0; i < 4; i++)
             {
                 ref var v = ref verts[baseIdx + i];
-                v.x = leftX + (v.x - leftX) * scale;
+                v.x = pivotX + (v.x - pivotX) * scale;
                 v.y = pivotY + (v.y - baselineY) * scale;
             }
         }
@@ -323,7 +472,10 @@ namespace LightSide
         public int[] Triangles => triangles.data;
 
         /// <summary>Gets the UV1 buffer: x = aspect (glyphW/glyphH), y = face dilate.</summary>
-        public Vector2[] Uvs1 => uvs1.data;
+        /// <summary>Gets the UV1 buffer: x = aspect (glyphW/glyphH), y = faceDilate,
+        /// z = per-glyph cluster index (monotonic per-line, transform-invariant),
+        /// w = intra-glyph X fraction (0 on the left edge, 1 on the right — interpolated by GPU).</summary>
+        public Vector4[] Uvs1 => uvs1.data;
 
         /// <summary>Gets the UV2 buffer containing layer 2 (underlay/shadow) parameters.</summary>
         /// <remarks>
@@ -363,8 +515,6 @@ namespace LightSide
             uvs1.Rent(estimatedVertices);
             colors.Rent(estimatedVertices);
             triangles.Rent(estimatedTriangles);
-
-            current = this;
         }
 
         /// <summary>
@@ -376,8 +526,6 @@ namespace LightSide
         /// </remarks>
         public void ReturnInstanceBuffers()
         {
-            current = null;
-
             vertices.Return();
             uvs0.Return();
             uvs1.Return();
@@ -463,16 +611,185 @@ namespace LightSide
 
         #endregion
 
+        #region Shared Effect Triangles
+
         /// <summary>
-        /// Sets cached canvas parameters for world-space text rendering.
+        /// Queues the 6 triangle indices for an effect duplicate quad starting at
+        /// <paramref name="destBaseIdx"/> into the shared pre- or post-face buffer.
         /// </summary>
-        /// <param name="lossyScale">The canvas lossy scale for proper sizing.</param>
-        /// <param name="hasWorldCamera">Whether the canvas uses a world camera.</param>
-        public void SetCanvasParametersCached(float lossyScale, bool hasWorldCamera)
+        /// <remarks>
+        /// Called by <see cref="EffectModifier.AppendSharedEffectQuad"/> after writing the quad's
+        /// vertices. The buffers are flushed once at the end of <see cref="GenerateMeshDataOnly"/>,
+        /// producing the final painter order
+        /// <c>[pre-face 1..N, face, post-face 1..N, line]</c> regardless of how many
+        /// <see cref="EffectModifier"/> instances are active.
+        /// </remarks>
+        public void QueueEffectTriangle(EffectPass pass, int destBaseIdx)
         {
-            this.lossyScale = lossyScale;
-            this.hasWorldCamera = hasWorldCamera;
+            if (pass == EffectPass.PostFace)
+            {
+                EnsurePassTriCapacity(ref sharedPostFaceTris, sharedPostFaceTriCount, sharedPostFaceTriCount + 6);
+                var tris = sharedPostFaceTris.data;
+                tris[sharedPostFaceTriCount]     = destBaseIdx;
+                tris[sharedPostFaceTriCount + 1] = destBaseIdx + 1;
+                tris[sharedPostFaceTriCount + 2] = destBaseIdx + 2;
+                tris[sharedPostFaceTriCount + 3] = destBaseIdx + 2;
+                tris[sharedPostFaceTriCount + 4] = destBaseIdx + 3;
+                tris[sharedPostFaceTriCount + 5] = destBaseIdx;
+                sharedPostFaceTriCount += 6;
+            }
+            else
+            {
+                EnsurePassTriCapacity(ref sharedPreFaceTris, sharedPreFaceTriCount, sharedPreFaceTriCount + 6);
+                var tris = sharedPreFaceTris.data;
+                tris[sharedPreFaceTriCount]     = destBaseIdx;
+                tris[sharedPreFaceTriCount + 1] = destBaseIdx + 1;
+                tris[sharedPreFaceTriCount + 2] = destBaseIdx + 2;
+                tris[sharedPreFaceTriCount + 3] = destBaseIdx + 2;
+                tris[sharedPreFaceTriCount + 4] = destBaseIdx + 3;
+                tris[sharedPreFaceTriCount + 5] = destBaseIdx;
+                sharedPreFaceTriCount += 6;
+            }
         }
+
+        private static void EnsurePassTriCapacity(ref PooledBuffer<int> buf, int filled, int required)
+        {
+            if (buf.data == null)
+            {
+                buf.Rent(Math.Max(required, 64));
+                return;
+            }
+            if (required <= buf.Capacity) return;
+
+            var newCap = Math.Max(required, buf.Capacity * 2);
+            var oldData = buf.data;
+            var newData = UniTextArrayPool<int>.Rent(newCap);
+            if (filled > 0)
+                Array.Copy(oldData, 0, newData, 0, filled);
+            UniTextArrayPool<int>.Return(oldData);
+            buf.data = newData;
+        }
+
+        /// <summary>
+        /// Flushes the shared pre/post effect triangle buffers into the index buffer in one shot.
+        /// Post tris are inserted at <see cref="postFaceInsertPoint"/> (or appended when no insert
+        /// point was latched); pre tris are then prepended. Resets both counts to 0.
+        /// </summary>
+        private void FlushSharedEffectTriangles()
+        {
+            var postCount = sharedPostFaceTriCount;
+            if (postCount > 0)
+            {
+                var existingTris = triangleCount;
+                EnsureCapacity(0, postCount);
+                var trisArr = triangles.data;
+                var insertAt = postFaceInsertPoint;
+                if ((uint)insertAt > (uint)existingTris) insertAt = existingTris;
+                if (insertAt < existingTris)
+                    Array.Copy(trisArr, insertAt, trisArr, insertAt + postCount, existingTris - insertAt);
+                Array.Copy(sharedPostFaceTris.data, 0, trisArr, insertAt, postCount);
+                triangleCount = existingTris + postCount;
+                sharedPostFaceTriCount = 0;
+            }
+
+            var preCount = sharedPreFaceTriCount;
+            if (preCount > 0)
+            {
+                var existingTris = triangleCount;
+                EnsureCapacity(0, preCount);
+                var trisArr = triangles.data;
+                Array.Copy(trisArr, 0, trisArr, preCount, existingTris);
+                Array.Copy(sharedPreFaceTris.data, 0, trisArr, 0, preCount);
+                triangleCount = existingTris + preCount;
+                sharedPreFaceTriCount = 0;
+            }
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Requests an atlas band upgrade for the current glyph if any effect modifier asked for
+        /// SDF padding wider than the current tile's computed band. Re-rasterizes the glyph at a
+        /// larger tile so subsequent frames have room for the requested outline / shadow extent.
+        /// </summary>
+        /// <remarks>
+        /// Must be called immediately after <see cref="onGlyph"/> for any quad whose outline /
+        /// shadow / extrude effects should be allowed to grow beyond the default SDF padding.
+        /// Reads <see cref="currentMaxGlyphExtent"/> (effect modifiers write into it during onGlyph)
+        /// and the face dilate stored in <see cref="Uvs1"/>[<see cref="faceBaseIdx"/>].y.
+        /// </remarks>
+        public void RequestBandUpgradeIfNeeded(long glyphKey, uint glyphIndex, in GlyphAtlas.GlyphEntry entry,
+            UniTextFont font, long varHash48, int[] ftCoords, float glyphH, float aspect)
+        {
+            if (glyphH < 1e-6f) return;
+
+            var faceDilate = uvs1.data[faceBaseIdx].y;
+            var padGlyph = GlyphAtlas.Pad / glyphH;
+            var facePad = faceDilate * padGlyph;
+            var requiredPad = facePad > currentMaxGlyphExtent ? facePad : currentMaxGlyphExtent;
+            if (requiredPad <= DefaultSdfPadding) return;
+
+            var effectExtent = requiredPad < padGlyph ? requiredPad : padGlyph;
+            var atlas = GlyphAtlas.GetInstance(RenderMode);
+            var tileSize = atlas.TileSizeFromEncoded(entry.encodedTile);
+            var totalExt = (aspect > 1f ? aspect : 1f) + 2f * padGlyph;
+            var requiredBandPx = (int)Math.Ceiling(effectExtent * tileSize / totalExt);
+            if (requiredBandPx <= entry.computedBandPx) return;
+
+            bandUpgradeRequests.Add(new BandUpgradeRequest
+            {
+                glyphKey = glyphKey,
+                glyphIndex = glyphIndex,
+                requiredBandPx = requiredBandPx,
+                font = font,
+                varHash48 = varHash48,
+                ftCoords = ftCoords,
+                mode = RenderMode
+            });
+        }
+
+        #region Quad Modification API
+
+        /// <summary>
+        /// Expands a 4-vertex glyph quad outward on all sides by <paramref name="delta"/>
+        /// (UV-space). Updates both positions and UV0 consistently so the atlas sample stays aligned.
+        /// </summary>
+        /// <param name="baseIdx">Index of the first vertex of the quad.</param>
+        /// <param name="delta">UV-space padding to add on each side (normalized by glyph height).</param>
+        /// <remarks>
+        /// The position delta is computed as <c>delta * glyphH * fontMetricFactor</c>,
+        /// using the glyph height stored in <c>Uvs0[baseIdx].w</c>.
+        /// Caller is responsible for deciding whether expansion is needed.
+        /// </remarks>
+        public void ExpandQuad(int baseIdx, float delta)
+        {
+            if (delta <= 0f) return;
+
+            var verts = vertices.data;
+            var glyphH = uvs0.data[baseIdx].w;
+            var deltaPixels = delta * glyphH * fontMetricFactor;
+
+            verts[baseIdx].x -= deltaPixels;
+            verts[baseIdx].y -= deltaPixels;
+            verts[baseIdx + 1].x -= deltaPixels;
+            verts[baseIdx + 1].y += deltaPixels;
+            verts[baseIdx + 2].x += deltaPixels;
+            verts[baseIdx + 2].y += deltaPixels;
+            verts[baseIdx + 3].x += deltaPixels;
+            verts[baseIdx + 3].y -= deltaPixels;
+
+            var uvData = uvs0.data;
+            uvData[baseIdx].x -= delta;
+            uvData[baseIdx].y -= delta;
+            uvData[baseIdx + 1].x -= delta;
+            uvData[baseIdx + 1].y += delta;
+            uvData[baseIdx + 2].x += delta;
+            uvData[baseIdx + 2].y += delta;
+            uvData[baseIdx + 3].x += delta;
+            uvData[baseIdx + 3].y -= delta;
+        }
+
+        #endregion
 
         /// <summary>
         /// Sets the layout rectangle for text positioning.
@@ -481,17 +798,6 @@ namespace LightSide
         public void SetRectOffset(Rect rect)
         {
             rectOffset = rect;
-        }
-        
-        private float CalculateXScale(float scale)
-        {
-            var absLossyScale = Mathf.Abs(lossyScale);
-            var result = scale * (hasWorldCamera ? absLossyScale : 1f);
-
-            if (result <= 0.0001f || float.IsNaN(result) || float.IsInfinity(result))
-                result = scale > 0 ? scale : 1f;
-
-            return result;
         }
 
         #region Parallel Mesh Generation
@@ -502,6 +808,10 @@ namespace LightSide
         /// </summary>
         public void GenerateMeshDataOnly(ReadOnlySpan<PositionedGlyph> glyphs, ReadOnlySpan<PositionedGlyph> virtualGlyphs)
         {
+            currentEffectPass = EffectPass.PreFace;
+            postFaceInsertPoint = -1;
+            sharedPreFaceTriCount = 0;
+            sharedPostFaceTriCount = 0;
             onRebuildStart?.Invoke();
             var glyphLen = glyphs.Length + virtualGlyphs.Length;
             usedGlyphKeys.FakeClear();
@@ -610,10 +920,17 @@ namespace LightSide
 
                 lastSdfFontId = glyphFontId;
 
+                EnsureCapacity(4, 6);
+                verts = vertices.data;
+                uvData = uvs0.data;
+                uv1Data = uvs1.data;
+                cols = colors.data;
+                tris = triangles.data;
+
                 var cluster = glyph.cluster;
                 var metrics = entry.metrics;
 
-                const float sdfPadding = 0.02f;
+                const float sdfPadding = DefaultSdfPadding;
                 var bearingXNorm = metrics.horizontalBearingX / upem;
                 var bearingYNorm = metrics.horizontalBearingY / upem;
                 var glyphW = metrics.width / upem;
@@ -673,11 +990,10 @@ namespace LightSide
                 cols[i2] = glyphColor;
                 cols[i3] = glyphColor;
 
-                var uv1Val = new Vector2(aspect, 0);
-                uv1Data[i0] = uv1Val;
-                uv1Data[i1] = uv1Val;
-                uv1Data[i2] = uv1Val;
-                uv1Data[i3] = uv1Val;
+                uv1Data[i0] = new Vector4(aspect, 0, cluster, 0);
+                uv1Data[i1] = new Vector4(aspect, 0, cluster, 0);
+                uv1Data[i2] = new Vector4(aspect, 0, cluster, 1);
+                uv1Data[i3] = new Vector4(aspect, 0, cluster, 1);
 
                 var localI0 = i0 - currentSegmentVertexStart;
                 tris[triangleCount] = localI0;
@@ -690,48 +1006,17 @@ namespace LightSide
                 currentCluster = cluster;
                 height = heightScaled;
                 baselineY = offY - glyph.y;
+                cursorX = offX + glyph.x;
 
                 vertexCount += 4;
                 triangleCount += 6;
 
-                var vcBeforeOnGlyph = vertexCount;
-                currentMaxEffectExtent = 0f;
-                if (glyph.shapedGlyphIndex >= 0)
-                    onGlyph?.Invoke();
+                faceBaseIdx = vertexCount - 4;
+                currentMaxGlyphExtent = 0f;
+                isVirtualGlyph = glyph.shapedGlyphIndex < 0;
+                onGlyph?.Invoke();
 
-                if (vertexCount == vcBeforeOnGlyph)
-                {
-                    int baseIdx = vcBeforeOnGlyph - 4;
-                    ExpandQuadForEffects(baseIdx, glyphH, metricsFactor, sdfPadding);
-
-                    if (entry.encodedTile >= 0 && glyphH > 1e-6f)
-                    {
-                        float faceDilate = uvs1.data[baseIdx].y;
-                        float padGlyph = GlyphAtlas.Pad / glyphH;
-                        float facePad = faceDilate * padGlyph;
-                        float requiredPad = facePad > currentMaxEffectExtent ? facePad : currentMaxEffectExtent;
-                        if (requiredPad > sdfPadding)
-                        {
-                            float effectExtent = requiredPad < padGlyph ? requiredPad : padGlyph;
-                            int tileSize = atlas.TileSizeFromEncoded(entry.encodedTile);
-                            float totalExt = (aspect > 1f ? aspect : 1f) + 2f * padGlyph;
-                            int requiredBandPx = (int)Math.Ceiling(effectExtent * tileSize / totalExt);
-                            if (requiredBandPx > entry.computedBandPx)
-                            {
-                                bandUpgradeRequests.Add(new BandUpgradeRequest
-                                {
-                                    glyphKey = glyphKey,
-                                    glyphIndex = glyphId,
-                                    requiredBandPx = requiredBandPx,
-                                    font = lastFont,
-                                    varHash48 = lastVarHash,
-                                    ftCoords = lastFtCoords,
-                                    mode = RenderMode
-                                });
-                            }
-                        }
-                    }
-                }
+                RequestBandUpgradeIfNeeded(glyphKey, glyphId, in entry, lastFont, lastVarHash, lastFtCoords, glyphH, aspect);
 
                 verts = vertices.data;
                 uvData = uvs0.data;
@@ -740,7 +1025,10 @@ namespace LightSide
                 tris = triangles.data;
             }
 
-            onAfterPage?.Invoke();
+            onMainPassComplete?.Invoke();
+
+            onMainPassFinalize?.Invoke();
+            FlushSharedEffectTriangles();
 
             if (skippedGlyphs > 0)
                 Cat.MeowFormat("[MeshGenerator] SKIPPED {0} glyphs (not in atlas)", skippedGlyphs);
@@ -786,9 +1074,6 @@ namespace LightSide
             onRebuildEnd?.Invoke();
         }
 
-        /// <summary>
-        /// Generates mesh data for emoji glyphs using bitmap SDF atlas.
-        /// </summary>
         private void GenerateEmojiSegment(PooledList<int> glyphIndices, PositionedGlyph[] positionedGlyphs, UniTextFont font)
         {
             var glyphCount = glyphIndices.Count;
@@ -808,8 +1093,6 @@ namespace LightSide
 
             var offX = rectOffset.xMin;
             var offY = rectOffset.yMax;
-
-            var xScaleVal = CalculateXScale(scaleVal);
 
             scale = scaleVal;
             offsetX = offX;
@@ -940,12 +1223,14 @@ namespace LightSide
                 currentCluster = cluster;
                 height = heightScaled;
                 baselineY = offY - glyph.y;
+                cursorX = offX + glyph.x;
 
                 vertexCount += 4;
                 triangleCount += 6;
 
-                if (glyph.shapedGlyphIndex >= 0)
-                    onGlyph?.Invoke();
+                faceBaseIdx = i0;
+                isVirtualGlyph = glyph.shapedGlyphIndex < 0;
+                onGlyph?.Invoke();
 
                 verts = vertices.data;
                 uvData = uvs0.data;
@@ -959,67 +1244,32 @@ namespace LightSide
                 Cat.MeowFormat("[GenerateEmojiSegment] {0}: ZERO RECT {1} glyphs", font.CachedName, zeroRectGlyphs);
         }
 
-        /// <summary>
-        /// Expands a glyph quad's vertices and UVs if effect passes require more padding than the initial default.
-        /// Called after OnGlyph callbacks so <see cref="currentMaxEffectExtent"/> is finalized.
-        /// </summary>
-        private void ExpandQuadForEffects(int baseIdx, float glyphH, float metricsFactor, float currentPadding)
-        {
-            if (glyphH < 1e-6f) return;
-
-            var faceDilate = uvs1.data[baseIdx].y;
-            var facePad = faceDilate * GlyphAtlas.Pad / glyphH;
-            var requiredPad = facePad > currentMaxEffectExtent ? facePad : currentMaxEffectExtent;
-
-            if (requiredPad <= currentPadding) return;
-
-            var maxPad = GlyphAtlas.Pad / glyphH;
-            requiredPad = requiredPad < maxPad ? requiredPad : maxPad;
-
-            var delta = requiredPad - currentPadding;
-            var deltaPixels = delta * glyphH * metricsFactor;
-
-            var verts = vertices.data;
-            verts[baseIdx].x -= deltaPixels;
-            verts[baseIdx].y -= deltaPixels;
-            verts[baseIdx + 1].x -= deltaPixels;
-            verts[baseIdx + 1].y += deltaPixels;
-            verts[baseIdx + 2].x += deltaPixels;
-            verts[baseIdx + 2].y += deltaPixels;
-            verts[baseIdx + 3].x += deltaPixels;
-            verts[baseIdx + 3].y -= deltaPixels;
-
-            var uvData = uvs0.data;
-            uvData[baseIdx].x -= delta;
-            uvData[baseIdx].y -= delta;
-            uvData[baseIdx + 1].x -= delta;
-            uvData[baseIdx + 1].y += delta;
-            uvData[baseIdx + 2].x += delta;
-            uvData[baseIdx + 2].y += delta;
-            uvData[baseIdx + 3].x += delta;
-            uvData[baseIdx + 3].y -= delta;
-        }
-
-
 
         /// <summary>
-        /// Creates Unity meshes from the generated mesh data and returns render data for each segment.
+        /// Collects raw render data (vertex/UV/triangle array slices + material/order metadata) for every
+        /// segment produced by the latest mesh generation. Does <b>not</b> build Unity <see cref="Mesh"/>
+        /// objects — consumers (canvas <c>UpdateSubMeshes</c>, world batcher) decide what to do with
+        /// the raw data.
         /// </summary>
         /// <returns>
-        /// A list of <see cref="UniTextRenderData"/> containing mesh, material, and texture for each segment.
-        /// The returned list is shared and will be cleared on the next call.
+        /// Shared list of <see cref="UniTextRenderData"/> entries — base SDF and/or emoji segments plus
+        /// any sub-meshes appended by <see cref="onCollectSubMeshes"/> subscribers. The list is reused
+        /// on the next call; consumers must use/copy immediately.
         /// </returns>
         /// <remarks>
         /// <para>
-        /// This method must be called after <see cref="GenerateMeshDataOnly"/> to apply the generated
-        /// vertex data to actual Unity meshes. At most 2 entries: SDF mesh (index 0) and emoji mesh (index 1).
+        /// SDF and emoji live in the same pooled buffers (<see cref="Vertices"/>, <see cref="Uvs0"/>,
+        /// <see cref="Colors"/>, <see cref="Triangles"/>) as contiguous ranges:
+        /// SDF in <c>[0, sdfVertexCount)</c>, emoji in <c>[sdfVertexCount, sdfVertexCount+emojiVertexCount)</c>.
+        /// Entries carry <c>vertexOffset</c> and <c>vertexCount</c> so consumers can read the right slice.
         /// </para>
         /// <para>
-        /// Uses <see cref="SharedMeshes"/> for mesh instances. CanvasRenderer.SetMesh() copies data,
-        /// so the same mesh instances can be reused across all components.
+        /// Array references remain valid only until the next <see cref="GenerateMeshDataOnly"/> /
+        /// <see cref="CollectRenderData"/> cycle on the same generator (pooled buffers may be regrown
+        /// or returned). Consumers must not retain references across frames.
         /// </para>
         /// </remarks>
-        public List<UniTextRenderData> ApplyMeshesToUnity()
+        public List<UniTextRenderData> CollectRenderData()
         {
             var resultBuffer = SharedPipelineComponents.MeshResultBuffer;
             resultBuffer.Clear();
@@ -1029,32 +1279,81 @@ namespace LightSide
 
             if (sdfVertexCount > 0)
             {
-                var mesh = SharedMeshes.Get(0);
-                mesh.Clear(false);
-                mesh.SetVertices(vertices.data, 0, sdfVertexCount);
-                mesh.SetUVs(0, uvs0.data, 0, sdfVertexCount);
-                mesh.SetUVs(1, uvs1.data, 0, sdfVertexCount);
-                if (uvs2.data != null)
-                    mesh.SetUVs(2, uvs2.data, 0, sdfVertexCount);
-                if (uvs3.data != null)
-                    mesh.SetUVs(3, uvs3.data, 0, sdfVertexCount);
-                mesh.SetColors(colors.data, 0, sdfVertexCount);
-                mesh.SetTriangles(triangles.data, 0, sdfTriangleCount, 0);
-                resultBuffer.Add(new UniTextRenderData(mesh, sdfFontId));
+                resultBuffer.Add(new UniTextRenderData
+                {
+                    fontId         = sdfFontId,
+                    order          = RenderOrder.Base,
+                    vertices       = vertices.data,
+                    uvs0           = uvs0.data,
+                    uvs1           = uvs1.data,
+                    uvs2           = uvs2.data,
+                    uvs3           = uvs3.data,
+                    colors         = colors.data,
+                    triangles      = triangles.data,
+                    vertexOffset   = 0,
+                    vertexCount    = sdfVertexCount,
+                    triangleOffset = 0,
+                    triangleCount  = sdfTriangleCount,
+                    hasUv1         = true,
+                    hasUv2         = uvs2.data != null,
+                    hasUv3         = uvs3.data != null,
+                });
             }
 
             if (emojiVertexCount > 0)
             {
-                var mesh = SharedMeshes.Get(1);
-                mesh.Clear(false);
-                mesh.SetVertices(vertices.data, sdfVertexCount, emojiVertexCount);
-                mesh.SetUVs(0, uvs0.data, sdfVertexCount, emojiVertexCount);
-                mesh.SetColors(colors.data, sdfVertexCount, emojiVertexCount);
-                mesh.SetTriangles(triangles.data, sdfTriangleCount, emojiTriangleCount, 0);
-                resultBuffer.Add(new UniTextRenderData(mesh, emojiFontId));
+                resultBuffer.Add(new UniTextRenderData
+                {
+                    fontId         = emojiFontId,
+                    order          = RenderOrder.Base,
+                    vertices       = vertices.data,
+                    uvs0           = uvs0.data,
+                    uvs1           = null,
+                    uvs2           = null,
+                    uvs3           = null,
+                    colors         = colors.data,
+                    triangles      = triangles.data,
+                    vertexOffset   = sdfVertexCount,
+                    vertexCount    = emojiVertexCount,
+                    triangleOffset = sdfTriangleCount,
+                    triangleCount  = emojiTriangleCount,
+                    hasUv1         = false,
+                    hasUv2         = false,
+                    hasUv3         = false,
+                });
             }
 
+            onCollectSubMeshes?.Invoke(resultBuffer);
+            StableSortByOrder(resultBuffer);
+
             return resultBuffer;
+        }
+
+        /// <summary>
+        /// In-place stable insertion sort of <paramref name="list"/> by
+        /// (<see cref="UniTextRenderData.order"/>, <see cref="UniTextRenderData.sortIndex"/>) ascending.
+        /// Typical list size is 1–5 entries (SDF + optional emoji + a few sub-mesh providers), so
+        /// insertion sort is the right choice: zero allocations, cache-friendly, and minimal overhead on
+        /// already-ordered input (the common case where no sub-mesh providers are registered).
+        /// </summary>
+        private static void StableSortByOrder(List<UniTextRenderData> list)
+        {
+            var n = list.Count;
+            if (n < 2) return;
+            for (var i = 1; i < n; i++)
+            {
+                var x = list[i];
+                var j = i - 1;
+                while (j >= 0)
+                {
+                    var y = list[j];
+                    if ((int)y.order < (int)x.order) break;
+                    if ((int)y.order == (int)x.order && y.sortIndex <= x.sortIndex) break;
+                    list[j + 1] = y;
+                    j--;
+                }
+                list[j + 1] = x;
+            }
         }
 
         /// <summary>
@@ -1065,7 +1364,7 @@ namespace LightSide
         {
             if (!hasGeneratedData) return;
 
-            bool isMsdf = RenderMode == UniTextBase.RenderModee.MSDF;
+            bool isMsdf = RenderMode == UniTextRenderMode.MSDF;
 
             if (isMsdf)
                 UniTextMaterialCache.EnsureMsdfAtlasSubscription();

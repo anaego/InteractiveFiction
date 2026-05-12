@@ -46,27 +46,28 @@ struct sdf_vertex_t
 {
     UNITY_VERTEX_INPUT_INSTANCE_ID
     float4 vertex    : POSITION;
-    float3 normal    : NORMAL;
+    float3 normal    : NORMAL;    // per-quad world-space normal written by UniTextWorldBatcher
     fixed4 color     : COLOR;
     float4 texcoord0 : TEXCOORD0; // xy = glyph UV, z = encodedTile, w = glyphH (em-space height for distance scaling)
     float4 texcoord1 : TEXCOORD1; // x = aspect (glyphW/glyphH), y = faceDilate, z = (free), w = (free)
-    float4 texcoord2 : TEXCOORD2; // effect data: x = dilate, y = packedColor, z = (free), w = softness
+    float4 texcoord2 : TEXCOORD2; // effect data: x = dilate, y = packed RG (R*256+G), z = packed BA (B*256+A), w = softness
     float4 texcoord3 : TEXCOORD3; // (free)
 };
 
 // ============================================
-// Bit-unpacking helpers (match C# EffectPacking)
+// Color unpack (matches C# EffectPacking.PackColor)
 // ============================================
+// Two-float arithmetic packing avoids the NaN/Inf bit patterns produced by a
+// bit-reinterpret pack: GPU drivers may canonicalize quiet-NaN payloads, which
+// silently corrupts color channels.
 
-half4 UnpackColor(float packed)
+half4 UnpackColor(float rg, float ba)
 {
-    uint u = asuint(packed);
-    return half4(
-        ((u >> 24) & 0xFF) / 255.0,
-        ((u >> 16) & 0xFF) / 255.0,
-        ((u >> 8)  & 0xFF) / 255.0,
-        (u         & 0xFF) / 255.0
-    );
+    float r = floor(rg / 256.0);
+    float g = rg - r * 256.0;
+    float b = floor(ba / 256.0);
+    float a = ba - b * 256.0;
+    return half4(r, g, b, a) / 255.0;
 }
 
 // ============================================
@@ -126,7 +127,7 @@ half4 ComputeMask(float4 vert, float2 pixelSize)
 {
     float4 clampedRect = clamp(_ClipRect, -2e10, 2e10);
     half2 maskSoftness = half2(max(_UIMaskSoftnessX, _MaskSoftnessX), max(_UIMaskSoftnessY, _MaskSoftnessY));
-    return half4(vert.xy * 2 - clampedRect.xy - clampedRect.zw, 0.25 / (0.25 * maskSoftness + pixelSize));
+    return half4(vert.xy * 2 - clampedRect.xy - clampedRect.zw, 0.25 / (0.25 * maskSoftness + abs(pixelSize)));
 }
 
 float4 ApplyVertexOffset(float4 vertex)

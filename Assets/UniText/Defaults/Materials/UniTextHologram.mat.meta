@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: c4316f7f4d446774fa8eca1281d137b4
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Defaults/Materials/UniTextHologram.mat
+  uploadId: 908872

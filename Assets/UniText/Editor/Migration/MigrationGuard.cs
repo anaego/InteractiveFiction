@@ -60,7 +60,7 @@ namespace LightSide
                         state.Save();
                         break;
                     case 2:
-                        EditorApplication.ExecuteMenuItem("Tools/UniText Migration");
+                        EditorApplication.ExecuteMenuItem("Tools/UniText/Migration");
                         break;
                 }
 

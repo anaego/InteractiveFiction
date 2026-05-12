@@ -13,7 +13,7 @@ using UnityEngine.Experimental.Rendering;
 
 namespace LightSide
 {
-    internal sealed class GlyphAtlas : IDisposable
+    public sealed class GlyphAtlas : IDisposable
     {
         public const float Pad = 0.5f;
         public const int PageStride = 16384;
@@ -104,7 +104,7 @@ namespace LightSide
 
         private List<TileSlot>[] freeTiles;
 
-        private readonly UniTextBase.RenderModee mode;
+        private readonly UniTextRenderMode mode;
         private readonly bool isEmoji;
         private readonly TextureFormat textureFormat;
         private readonly bool hasMipmaps;
@@ -117,15 +117,14 @@ namespace LightSide
         private static GlyphAtlas msdfInstance;
         private static GlyphAtlas emojiInstance;
 
-        public static GlyphAtlas GetInstance(UniTextBase.RenderModee mode) => mode switch
+        public static GlyphAtlas GetInstance(UniTextRenderMode mode) => mode switch
         {
-            UniTextBase.RenderModee.SDF => sdfInstance ??= new GlyphAtlas(UniTextBase.RenderModee.SDF),
-            UniTextBase.RenderModee.MSDF => msdfInstance ??= new GlyphAtlas(UniTextBase.RenderModee.MSDF),
+            UniTextRenderMode.SDF => sdfInstance ??= new GlyphAtlas(UniTextRenderMode.SDF),
+            UniTextRenderMode.MSDF => msdfInstance ??= new GlyphAtlas(UniTextRenderMode.MSDF),
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
 
-        /// <summary>Returns the emoji atlas instance, or null if not yet created.</summary>
-        public static GlyphAtlas Emoji => emojiInstance;
+        internal static GlyphAtlas Emoji => emojiInstance;
 
         /// <summary>
         /// Creates the singleton emoji atlas. Must be called exactly once during EmojiFont initialization.
@@ -156,11 +155,10 @@ namespace LightSide
 
         internal const int EmojiGutter = 4;
 
-        /// <summary>Constructor for SDF/MSDF atlas.</summary>
-        private GlyphAtlas(UniTextBase.RenderModee mode)
+        private GlyphAtlas(UniTextRenderMode mode)
         {
             this.mode = mode;
-            textureFormat = mode == UniTextBase.RenderModee.MSDF ? TextureFormat.RGBAHalf : TextureFormat.RHalf;
+            textureFormat = mode == UniTextRenderMode.MSDF ? TextureFormat.RGBAHalf : TextureFormat.RHalf;
             hasMipmaps = false;
             isLinear = true;
             atlasFilterMode = FilterMode.Bilinear;
@@ -237,8 +235,17 @@ namespace LightSide
                 return h & 0xFFFF_FFFFFFFF;
             }
         }
+        
+        internal static int OffsetTileSize(int tileSize, int offset)
+        {
+            if (offset == 0) return tileSize;
+            int idx = Array.IndexOf(defaultTileSizes, tileSize);
+            if (idx < 0) return tileSize;
+            int newIdx = Math.Clamp(idx + offset, 0, defaultTileSizes.Length - 1);
+            return defaultTileSizes[newIdx];
+        }
 
-        public static int ClassifyTileSize(ReadOnlySpan<GlyphCurveCache.Segment> segments, float aspect, float glyphH, float detailMultiplier = 1f)
+        internal static int ClassifyTileSize(ReadOnlySpan<GlyphCurveCache.Segment> segments, float aspect, float glyphH, float detailMultiplier = 1f)
         {
             int n = segments.Length;
             int size;
@@ -292,12 +299,12 @@ namespace LightSide
 
         public int TileSizeFromEncoded(int encodedTile) => tileSizes[encodedTile / 4096];
 
-        public void ReservePendingSegments(int additionalCount)
+        internal void ReservePendingSegments(int additionalCount)
         {
             pendingSegments.EnsureCapacity(pendingSegments.count + additionalCount);
         }
 
-        public GlyphEntry EnsureGlyph(long varHash48, uint glyphIndex, int baseFontHash,
+        internal GlyphEntry EnsureGlyph(long varHash48, uint glyphIndex, int baseFontHash,
             in GlyphCurveCache.GlyphCurveData curveData, ReadOnlySpan<GlyphCurveCache.Segment> segments,
             int tileSize, float glyphH, float aspect, in GlyphMetrics glyphMetrics)
         {
@@ -348,7 +355,7 @@ namespace LightSide
         /// it will be returned to UniTextArrayPool&lt;byte&gt; after FlushPending copies the data.
         /// Caller must provide a pooled buffer (UniTextArrayPool&lt;byte&gt;.Rent).
         /// </summary>
-        public GlyphEntry EnsureEmojiGlyph(long varHash48, uint glyphIndex, int baseFontHash,
+        internal GlyphEntry EnsureEmojiGlyph(long varHash48, uint glyphIndex, int baseFontHash,
             byte[] pixels, int w, int h, bool isBGRA, in GlyphMetrics glyphMetrics)
         {
             long key = MakeKey(varHash48, glyphIndex);
@@ -402,7 +409,7 @@ namespace LightSide
             return entries.TryGetValue(key, out entry);
         }
 
-        public void UpgradeGlyphBand(long key,
+        internal void UpgradeGlyphBand(long key,
             ReadOnlySpan<GlyphCurveCache.Segment> segments,
             float glyphH, float aspect, int requiredBandPx)
         {
@@ -430,7 +437,7 @@ namespace LightSide
             entries[key] = entry;
         }
 
-        public void FlushPending()
+        internal void FlushPending()
         {
             if (isEmoji)
             {
@@ -485,7 +492,7 @@ namespace LightSide
             int maxPixelsPerTile = 256 * 256;
             timer.Mark();
 
-            if (mode == UniTextBase.RenderModee.SDF)
+            if (mode == UniTextRenderMode.SDF)
                 FlushSdf(segmentsNative, tasks, workerCount, maxPixelsPerTile);
             else
                 FlushMsdf(segmentsNative, tasks, workerCount, maxPixelsPerTile);
@@ -506,7 +513,7 @@ namespace LightSide
             tasks.Dispose();
             segmentsNative.Dispose();
 
-            var modeLabel = mode == UniTextBase.RenderModee.SDF ? "SDF" : "MSDF";
+            var modeLabel = mode == UniTextRenderMode.SDF ? "SDF" : "MSDF";
             Cat.Meow($"[GlyphAtlas:{modeLabel}] Flushed {pending.Count} glyphs " +
                      $"(64px:{count64} 128px:{count128} 256px:{count256}), pages:{sliceCount} | " +
                      $"setup={timer.Phase(0):F1}ms render={timer.Phase(1):F1}ms " +
@@ -746,7 +753,7 @@ namespace LightSide
             pagePointers.Dispose();
         }
 
-        public void AddRef(long key)
+        internal void AddRef(long key)
         {
             if (entries.TryGetValue(key, out var e))
             {
@@ -765,7 +772,7 @@ namespace LightSide
             }
         }
 
-        public void Release(long key)
+        internal void Release(long key)
         {
             if (entries.TryGetValue(key, out var e))
             {
@@ -793,7 +800,7 @@ namespace LightSide
 
         private static List<long> clearForFontKeys;
 
-        public void ClearForFont(int fontHash)
+        internal void ClearForFont(int fontHash)
         {
             for (int i = pending.Count - 1; i >= 0; i--)
             {
@@ -862,17 +869,16 @@ namespace LightSide
                 fontHash, keysToRemove.Count, entries.Count, sliceCount);
         }
 
-        public Texture AtlasTexture => atlasArray;
-        public int TileGutter => tileGutter;
-        /// <summary>Max content size that fits inside a tile with gutter on each side.</summary>
-        public int MaxContentSize => tileSizes[0] - 2 * tileGutter;
+        internal Texture AtlasTexture => atlasArray;
+        internal int TileGutter => tileGutter;
+        internal int MaxContentSize => tileSizes[0] - 2 * tileGutter;
         internal event Action<Texture> AtlasTextureChanged;
         internal static event Action<Texture> AnyAtlasTextureChanged;
         internal static event Action<GlyphAtlas> AnyAtlasCompacted;
-        public int PageCount => sliceCount;
+        internal int PageCount => sliceCount;
         internal int EntryCount => entries.Count;
 
-        public static float ComputeAspect(in GlyphCurveCache.GlyphCurveData metrics)
+        internal static float ComputeAspect(in GlyphCurveCache.GlyphCurveData metrics)
         {
             float h = metrics.bboxMaxY - metrics.bboxMinY;
             if (h < 1e-6f) return 1f;
@@ -943,7 +949,7 @@ namespace LightSide
             return GrowAtlas(tileSize);
         }
 
-        public void PreAllocate(long estimatedTileAreaPixels)
+        internal void PreAllocate(long estimatedTileAreaPixels)
         {
             long pageArea = (long)PageSize * PageSize;
             int estimatedNewPages = (int)((estimatedTileAreaPixels * 115 / 100 + pageArea - 1) / pageArea);
@@ -968,57 +974,68 @@ namespace LightSide
                 ? Math.Max(2, minCapacity)
                 : Math.Max(atlasArray.depth * 2, minCapacity);
 
-            var gfxFormat = GraphicsFormatUtility.GetGraphicsFormat(textureFormat, !isLinear);
-#if UNITY_2022_1_OR_NEWER
-            var flags = TextureCreationFlags.DontInitializePixels | TextureCreationFlags.DontUploadUponCreate;
-#else
-            var flags = (TextureCreationFlags)0;
-#endif
-            if (hasMipmaps) flags |= TextureCreationFlags.MipChain;
-
-            var newTex = new Texture2DArray(PageSize, PageSize, newCapacity, gfxFormat, flags, hasMipmaps ? -1 : 1)
-            {
-                filterMode = atlasFilterMode,
-                wrapMode = TextureWrapMode.Clamp,
-                hideFlags = HideFlags.HideAndDontSave,
-                mipMapBias = atlasMipMapBias
-            };
+            var newTex = CreateAtlasTexture(newCapacity);
 
             if (atlasArray != null)
             {
-                int mipCount = atlasArray.mipmapCount;
-                for (int i = 0; i < sliceCount; i++)
-                    for (int m = 0; m < mipCount; m++)
-                    {
-                        var oldData = atlasArray.GetPixelData<byte>(m, i);
-                        var newData = newTex.GetPixelData<byte>(m, i);
-                        NativeArray<byte>.Copy(oldData, newData);
-                    }
-
+                CopyAtlasSlices(atlasArray, newTex, sliceCount);
                 UnityEngine.Object.DestroyImmediate(atlasArray);
             }
 
             atlasArray = newTex;
             cachedNativeTexPtr = newTex.GetNativeTexturePtr();
 
-            if (sliceCount > 0)
-            {
-                if (GpuUpload.IsSupported)
-                {
-                    int mips = hasMipmaps ? newTex.mipmapCount : 1;
-                    ulong mask = sliceCount >= 64 ? ~0UL : (1UL << sliceCount) - 1;
-                    GpuUpload.UploadDirtySlices(newTex, mask, mips, cachedNativeTexPtr);
-                }
-                else
-                {
-                    newTex.Apply(false, false);
-                }
-            }
+            UploadAtlasSlices(newTex, sliceCount);
             AtlasTextureChanged?.Invoke(newTex);
             AnyAtlasTextureChanged?.Invoke(newTex);
         }
 
-        
+        private Texture2DArray CreateAtlasTexture(int depth)
+        {
+            var gfxFormat = GraphicsFormatUtility.GetGraphicsFormat(textureFormat, !isLinear);
+#if UNITY_2022_1_OR_NEWER
+            var flags = TextureCreationFlags.DontInitializePixels | TextureCreationFlags.DontUploadUponCreate;
+#else
+            var flags = (TextureCreationFlags)0;
+#endif
+            if (hasMipmaps)
+                flags |= TextureCreationFlags.MipChain;
+
+            return new Texture2DArray(PageSize, PageSize, depth, gfxFormat, flags, hasMipmaps ? -1 : 1)
+            {
+                filterMode = atlasFilterMode,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave,
+                mipMapBias = atlasMipMapBias
+            };
+        }
+
+        private static void CopyAtlasSlices(Texture2DArray source, Texture2DArray destination, int copySliceCount)
+        {
+            int mipCount = source.mipmapCount;
+            for (int i = 0; i < copySliceCount; i++)
+                for (int m = 0; m < mipCount; m++)
+                {
+                    var sourceData = source.GetPixelData<byte>(m, i);
+                    var destinationData = destination.GetPixelData<byte>(m, i);
+                    NativeArray<byte>.Copy(sourceData, destinationData);
+                }
+        }
+
+        private void UploadAtlasSlices(Texture2DArray texture, int activeSliceCount)
+        {
+            if (activeSliceCount <= 0)
+                return;
+
+            int mipCount = hasMipmaps ? texture.mipmapCount : 1;
+            ulong dirtyMask = activeSliceCount >= 64 ? ~0UL : (1UL << activeSliceCount) - 1;
+            if (GpuUpload.IsSupported)
+                GpuUpload.UploadDirtySlices(texture, dirtyMask, mipCount, cachedNativeTexPtr);
+            else
+                texture.Apply(false, false);
+        }
+
+
         private TileSlot GrowAtlas(int tileSize)
         {
             int newSliceIndex = sliceCount;
@@ -1049,7 +1066,7 @@ namespace LightSide
         /// making the page available for fresh allocations.
         /// Call periodically after UpdateGlyphAtlasRefCounts.
         /// </summary>
-        public void TryRecyclePages()
+        internal void TryRecyclePages()
         {
             for (int p = 0; p < sliceCount; p++)
                 pageLiveCount[p] = 0;
@@ -1138,7 +1155,7 @@ namespace LightSide
         /// Trims trailing empty pages and shrinks the Texture2DArray if possible.
         /// Call after TryRecyclePages at lower frequency.
         /// </summary>
-        public void TryShrinkAtlas()
+        internal void TryShrinkAtlas()
         {
             int sliceCountBefore = sliceCount;
             while (sliceCount > 0)
@@ -1176,37 +1193,16 @@ namespace LightSide
                 int newDepth = Math.Max(sliceCount, 1);
                 Cat.MeowFormat("[GlyphAtlas] TryShrinkAtlas: SHRINKING atlas depth {0}→{1}, activePages={2}, entries={3}",
                     atlasArray.depth, newDepth, sliceCount, entries.Count);
-                var newTex = new Texture2DArray(PageSize, PageSize, newDepth, textureFormat, hasMipmaps, isLinear)
-                {
-                    filterMode = atlasFilterMode,
-                    wrapMode = TextureWrapMode.Clamp,
-                    hideFlags = HideFlags.HideAndDontSave,
-                    mipMapBias = atlasMipMapBias
-                };
+                var newTex = CreateAtlasTexture(newDepth);
 
-                int mipCount = atlasArray.mipmapCount;
-                for (int i = 0; i < sliceCount; i++)
-                    for (int m = 0; m < mipCount; m++)
-                    {
-                        var oldData = atlasArray.GetPixelData<byte>(m, i);
-                        var newData = newTex.GetPixelData<byte>(m, i);
-                        NativeArray<byte>.Copy(oldData, newData);
-                    }
-
-                if (SystemInfo.copyTextureSupport != CopyTextureSupport.None)
-                {
-                    for (int i = 0; i < sliceCount; i++)
-                        for (int m = 0; m < mipCount; m++)
-                            Graphics.CopyTexture(atlasArray, i, m, newTex, i, m);
-                }
-                else
-                {
-                    newTex.Apply(false, false);
-                }
+                CopyAtlasSlices(atlasArray, newTex, sliceCount);
 
                 UnityEngine.Object.DestroyImmediate(atlasArray);
                 atlasArray = newTex;
                 cachedNativeTexPtr = newTex.GetNativeTexturePtr();
+
+                UploadAtlasSlices(newTex, sliceCount);
+
                 AtlasTextureChanged?.Invoke(newTex);
                 AnyAtlasTextureChanged?.Invoke(newTex);
             }
@@ -1219,7 +1215,7 @@ namespace LightSide
         /// a compact layout by copying pixel data — no re-rasterization needed.
         /// Call after TryShrinkAtlas at the same frequency.
         /// </summary>
-        public void CompactIfFragmented()
+        internal void CompactIfFragmented()
         {
             if (sliceCount < 4 || atlasArray == null) return;
 

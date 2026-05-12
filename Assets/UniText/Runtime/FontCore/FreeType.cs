@@ -419,7 +419,6 @@ namespace LightSide
         static FreeType() => Reseter.UnmanagedCleaning += Dispose;
     #endif
 
-        /// <summary>Disposes the current font face and releases resources.</summary>
         private static void Dispose()
         {
             DisposeFace();

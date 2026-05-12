@@ -1,22 +1,27 @@
 using System;
 using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
 
 namespace LightSide
 {
     /// <summary>
-    /// Default implementation of text highlighting.
+    /// Default highlighting logic — click flash with fade-out, hover tint, programmatic
+    /// selection — wired to the built-in renderers (<see cref="CanvasHighlightRenderer"/>
+    /// for <see cref="UniText"/>, <see cref="WorldHighlightRenderer"/> for
+    /// <see cref="UniTextWorld"/>). Subclass and override either
+    /// <see cref="CreateHighlightRenderer(UniText, string, HighlightOrder)"/> or
+    /// <see cref="CreateHighlightRenderer(UniTextWorld, string, HighlightOrder)"/>
+    /// to plug a custom visual on the chosen backend while keeping this logic.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Provides visual feedback for interactive range clicks with a fade-out animation.
-    /// Creates a child <see cref="RangeHighlightGraphic"/> component for rendering.
-    /// </para>
-    /// </remarks>
     [Serializable]
     public class DefaultTextHighlighter : TextHighlighter
     {
+        protected override TextHighlightRenderer CreateHighlightRenderer(UniText owner, string name, HighlightOrder order)
+            => new CanvasHighlightRenderer(owner, name, order);
+
+        protected override TextHighlightRenderer CreateHighlightRenderer(UniTextWorld owner, string name, HighlightOrder order)
+            => new WorldHighlightRenderer(owner, name, order);
+
         [SerializeField]
         [Tooltip("Color of the click highlight.")]
         private Color clickColor = new(0.2f, 0.5f, 1f, 0.6f);
@@ -29,9 +34,12 @@ namespace LightSide
         [Tooltip("Color of the hover highlight.")]
         private Color hoverColor = new(0.2f, 0.5f, 1f, 0.1f);
 
-        private RangeHighlightGraphic clickGraphic;
-        private RangeHighlightGraphic hoverGraphic;
-        private RangeHighlightGraphic selectionGraphic;
+        private Color selectionColor = Color.clear;
+
+        private TextHighlightRenderer clickRenderer;
+        private TextHighlightRenderer hoverRenderer;
+        private TextHighlightRenderer selectionRenderer;
+
         private float clickAlpha;
         private Color currentClickColor;
         private readonly List<Rect> boundsCache = new(4);
@@ -60,86 +68,39 @@ namespace LightSide
         /// <summary>Gets or sets the selection highlight color.</summary>
         public Color SelectionColor
         {
-            get => selectionGraphic != null ? selectionGraphic.color : Color.clear;
-            set { if (selectionGraphic != null) selectionGraphic.color = value; }
-        }
-
-        public override void Initialize(UniText owner)
-        {
-            base.Initialize(owner);
-            EnsureGraphics();
-        }
-
-        private void EnsureGraphics()
-        {
-            if (owner == null) return;
-
-            var ownerRT = owner.rectTransform;
-
-            if (clickGraphic == null)
-                clickGraphic = CreateHighlightGraphic("ClickHighlight", ownerRT, false);
-            if (hoverGraphic == null)
-                hoverGraphic = CreateHighlightGraphic("HoverHighlight", ownerRT, true);
-            if (selectionGraphic == null)
-                selectionGraphic = CreateHighlightGraphic("SelectionHighlight", ownerRT, false);
-        }
-
-        private RangeHighlightGraphic CreateHighlightGraphic(string name, RectTransform ownerRT, bool firstSibling)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(owner.transform, false);
-            if (firstSibling) go.transform.SetAsFirstSibling();
-            else go.transform.SetAsLastSibling();
-            go.hideFlags = HideFlags.HideAndDontSave;
-
-            var rt = go.AddComponent<RectTransform>();
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.pivot = ownerRT.pivot;
-            rt.offsetMin = Vector2.zero;
-            rt.offsetMax = Vector2.zero;
-
-            var graphic = go.AddComponent<RangeHighlightGraphic>();
-            graphic.color = Color.clear;
-            return graphic;
+            get => selectionColor;
+            set
+            {
+                selectionColor = value;
+                if (selectionRenderer != null) selectionRenderer.Color = value;
+            }
         }
 
         public override void OnRangeClicked(InteractiveRange range, List<Rect> bounds)
         {
-            if (bounds == null || bounds.Count == 0) return;
+            if (bounds == null || bounds.Count == 0 || owner == null) return;
 
-            EnsureGraphics();
-            if (clickGraphic == null) return;
-
-            clickGraphic.transform.SetAsLastSibling();
-            clickGraphic.SetRects(bounds);
+            clickRenderer ??= CreateHighlightRenderer("ClickHighlight", HighlightOrder.Above);
+            clickRenderer.SetRects(bounds);
             clickAlpha = 1f;
             currentClickColor = clickColor;
-            clickGraphic.color = currentClickColor;
+            clickRenderer.Color = currentClickColor;
         }
 
         public override void OnRangeEntered(InteractiveRange range, List<Rect> bounds)
         {
-            if (bounds == null || bounds.Count == 0) return;
+            if (bounds == null || bounds.Count == 0 || owner == null) return;
 
-            EnsureGraphics();
-            if (hoverGraphic == null) return;
-
-            hoverGraphic.SetRects(bounds);
-            hoverGraphic.color = hoverColor;
+            hoverRenderer ??= CreateHighlightRenderer("HoverHighlight", HighlightOrder.Behind);
+            hoverRenderer.SetRects(bounds);
+            hoverRenderer.Color = hoverColor;
         }
 
         public override void OnRangeExited(InteractiveRange range)
         {
-            if (hoverGraphic != null)
-            {
-                hoverGraphic.Clear();
-                hoverGraphic.color = Color.clear;
-            }
-        }
-
-        public override void OnSelectionChanged(int startCluster, int endCluster, List<Rect> bounds)
-        {
+            if (hoverRenderer == null) return;
+            hoverRenderer.Clear();
+            hoverRenderer.Color = Color.clear;
         }
 
         /// <summary>
@@ -150,8 +111,7 @@ namespace LightSide
         /// <param name="endCluster">End of the range (cluster index, exclusive).</param>
         public void SetSelection(int startCluster, int endCluster)
         {
-            EnsureGraphics();
-            if (selectionGraphic == null || owner == null) return;
+            if (owner == null) return;
 
             owner.GetRangeBounds(startCluster, endCluster, boundsCache);
             if (boundsCache.Count == 0)
@@ -160,65 +120,51 @@ namespace LightSide
                 return;
             }
 
-            selectionGraphic.transform.SetAsLastSibling();
-            selectionGraphic.SetRects(boundsCache);
+            if (selectionRenderer == null)
+            {
+                selectionRenderer = CreateHighlightRenderer("SelectionHighlight", HighlightOrder.Above);
+                selectionRenderer.Color = selectionColor;
+            }
+            selectionRenderer.SetRects(boundsCache);
         }
 
-        /// <summary>
-        /// Clears the selection highlight.
-        /// </summary>
+        /// <summary>Clears the selection highlight.</summary>
         public void ClearSelection()
         {
-            if (selectionGraphic != null)
-            {
-                selectionGraphic.Clear();
-                selectionGraphic.color = Color.clear;
-            }
+            if (selectionRenderer == null) return;
+            selectionRenderer.Clear();
         }
 
         public override void Update()
         {
-            if (clickAlpha > 0)
-            {
-                clickAlpha -= Time.deltaTime / fadeDuration;
+            if (clickAlpha <= 0f) return;
 
-                if (clickAlpha <= 0)
+            clickAlpha -= Time.deltaTime / fadeDuration;
+
+            if (clickAlpha <= 0f)
+            {
+                clickAlpha = 0f;
+                if (clickRenderer != null)
                 {
-                    clickAlpha = 0;
-                    if (clickGraphic != null)
-                    {
-                        clickGraphic.Clear();
-                        clickGraphic.color = Color.clear;
-                    }
+                    clickRenderer.Clear();
+                    clickRenderer.Color = Color.clear;
                 }
-                else if (clickGraphic != null)
-                {
-                    currentClickColor.a = clickColor.a * clickAlpha;
-                    clickGraphic.color = currentClickColor;
-                }
+            }
+            else if (clickRenderer != null)
+            {
+                currentClickColor.a = clickColor.a * clickAlpha;
+                clickRenderer.Color = currentClickColor;
             }
         }
 
         public override void Destroy()
         {
-            if (clickGraphic != null)
-            {
-                ObjectUtils.SafeDestroy(clickGraphic.gameObject);
-                clickGraphic = null;
-            }
-
-            if (hoverGraphic != null)
-            {
-                ObjectUtils.SafeDestroy(hoverGraphic.gameObject);
-                hoverGraphic = null;
-            }
-
-            if (selectionGraphic != null)
-            {
-                ObjectUtils.SafeDestroy(selectionGraphic.gameObject);
-                selectionGraphic = null;
-            }
-
+            clickRenderer?.Destroy();
+            hoverRenderer?.Destroy();
+            selectionRenderer?.Destroy();
+            clickRenderer = null;
+            hoverRenderer = null;
+            selectionRenderer = null;
             base.Destroy();
         }
     }

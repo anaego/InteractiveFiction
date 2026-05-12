@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 9771d87fa2dae8a46a2f628c14c01f5a
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Shaders/Templates/Examples/UniText_Custom-Hologram.shader
+  uploadId: 908872

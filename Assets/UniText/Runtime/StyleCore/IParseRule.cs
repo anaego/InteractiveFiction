@@ -26,6 +26,13 @@ namespace LightSide
         int Priority => 0;
 
         /// <summary>
+        /// Indicates whether this rule operates without a modifier (e.g., protection rules like noparse).
+        /// When <see langword="true"/>, the rule can be registered via <c>UniText.RegisterRule</c> without
+        /// pairing it with a <c>BaseModifier</c>.
+        /// </summary>
+        bool IsStandalone => false;
+
+        /// <summary>
         /// Attempts to match a pattern starting at the specified index.
         /// </summary>
         /// <param name="text">The text to scan.</param>

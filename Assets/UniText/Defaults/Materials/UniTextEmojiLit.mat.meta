@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: f9966ac0ef3cc6d47973a3edbec98289
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Defaults/Materials/UniTextEmojiLit.mat
+  uploadId: 908872

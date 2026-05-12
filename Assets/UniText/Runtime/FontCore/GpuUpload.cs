@@ -71,6 +71,8 @@ namespace LightSide
         {
             get
             {
+                //TODO: I need to improve and fix realization. Especially for Metal
+                return false;
                 if (!initialized) Initialize();
                 return supported;
             }

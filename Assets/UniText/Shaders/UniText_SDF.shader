@@ -6,7 +6,7 @@ Shader "UniText/SDF" {
 
 Properties {
 	_ShaderFlags		("Flags", float) = 0
-	_MainTex			("Font Atlas", 2DArray) = "" {}
+	[HideInInspector] _MainTex ("Font Atlas", 2DArray) = "" {}
 
 	_ScaleX				("Scale X", float) = 1
 	_ScaleY				("Scale Y", float) = 1
@@ -94,7 +94,7 @@ SubShader {
 			float4 vPosition = UnityObjectToClipPos(vert);
 
 			float2 pixelSize = vPosition.w;
-			pixelSize /= float2(_ScaleX, _ScaleY) * abs(mul((float2x2)UNITY_MATRIX_P, _ScreenParams.xy));
+			pixelSize /= abs(mul((float2x2)UNITY_MATRIX_P, _ScreenParams.xy));
 
 			fixed4 color = GammaToLinearIfNeeded(input.color);
 			float vertexAlpha = color.a;
@@ -104,11 +104,10 @@ SubShader {
 			faceColor.rgb *= faceColor.a;
 
 			// Effect data from UV2 (zeros = face mode)
-			float effectDilate  = input.texcoord2.x;
-			float effectColPack = input.texcoord2.y;
-			float effectSoft    = input.texcoord2.w;
+			float effectDilate = input.texcoord2.x;
+			float effectSoft   = input.texcoord2.w;
 
-			half4 effectCol = UnpackColor(effectColPack);
+			half4 effectCol = UnpackColor(input.texcoord2.y, input.texcoord2.z);
 			effectCol.a *= vertexAlpha;
 			effectCol.rgb *= effectCol.a;
 
@@ -144,9 +143,9 @@ SubShader {
 
 			half4 result;
 
-			// Mode detection via UV2: when UV2 = zeros (face mode), packed color = 0,
+			// Mode detection via UV2: when UV2 = zeros (face mode), packed RG/BA = 0,
 			// which UnpackColor decodes as RGBA(0,0,0,0) → effectColor.a = 0 after premultiply.
-			// When UV2 has effect data, packed color is non-zero → effectColor.a > 0.
+			// When UV2 has effect data, packed BA encodes a non-zero alpha → effectColor.a > 0.
 			// Branch is coherent per-quad (all 4 vertices share the same UV2 mode).
 			if (input.effectColor.a < 0.001)
 			{

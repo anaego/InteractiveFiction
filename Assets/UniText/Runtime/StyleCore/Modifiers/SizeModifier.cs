@@ -85,7 +85,11 @@ namespace LightSide
                     {
                         var scale = attribute.buffer[cluster];
                         if (scale > 0f)
+                        {
                             glyphs[g].advanceX *= scale;
+                            glyphs[g].offsetX *= scale;
+                            glyphs[g].offsetY *= scale;
+                        }
                     }
 
                     width += glyphs[g].advanceX;
@@ -97,7 +101,7 @@ namespace LightSide
 
         private void OnGlyph()
         {
-            var gen = UniTextMeshGenerator.Current;
+            var gen = uniText.MeshGenerator;
             var cluster = gen.currentCluster;
 
             if ((uint)cluster >= (uint)attribute.buffer.Capacity)
@@ -107,7 +111,7 @@ namespace LightSide
             if (scale <= 0f || Math.Abs(scale - 1f) < 0.001f)
                 return;
 
-            UniTextMeshGenerator.ScaleGlyphQuad(gen.Vertices, gen.vertexCount - 4, gen.baselineY, scale);
+            UniTextMeshGenerator.ScaleGlyphQuad(gen.Vertices, gen.faceBaseIdx, gen.cursorX, gen.baselineY, scale);
         }
     }
 }

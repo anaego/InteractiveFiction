@@ -59,27 +59,72 @@ namespace LightSide
         private void DrawFamilies()
         {
             while (familyFoldouts.Count < familiesProp.arraySize)
-                familyFoldouts.Add(true);
+                familyFoldouts.Add(false);
             if (familyFoldouts.Count > familiesProp.arraySize)
                 familyFoldouts.RemoveRange(familiesProp.arraySize, familyFoldouts.Count - familiesProp.arraySize);
 
             for (int fi = 0; fi < familiesProp.arraySize; fi++)
             {
                 var familyProp = familiesProp.GetArrayElementAtIndex(fi);
+                var nameProp = familyProp.FindPropertyRelative("name");
                 var primaryProp = familyProp.FindPropertyRelative("primary");
                 var facesProp = familyProp.FindPropertyRelative("faces");
+                var preferredLanguageProp = familyProp.FindPropertyRelative("preferredLanguage");
 
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
                 var headerRect = GUILayoutUtility.GetRect(0, 20, GUILayout.ExpandWidth(true));
                 var title = GetFamilyTitle(primaryProp, facesProp);
                 var foldoutStyle = new GUIStyle(EditorStyles.foldout) { fontStyle = FontStyle.Bold };
-                var foldoutRect = new Rect(headerRect.x + 14, headerRect.y, headerRect.width - 38, headerRect.height);
+
+                const float DeleteBtnW = 20f;
+                const float InlineNameW = 80f;
+                const float Pad = 4f;
+                const float FoldoutIconW = 18f;
+                const float TitleDesiredW = 130f;
+                const float TitleMinW = 60f;
+                const float PrimaryMinW = 100f;
+
+                var collapsed = !familyFoldouts[fi];
+                float titleW, primaryW;
+
+                if (collapsed)
+                {
+                    var freeW = headerRect.width - FoldoutIconW - Pad - InlineNameW - Pad - DeleteBtnW;
+                    titleW = TitleDesiredW;
+                    primaryW = freeW - titleW;
+                    if (primaryW < PrimaryMinW)
+                    {
+                        primaryW = Mathf.Min(PrimaryMinW, freeW - TitleMinW);
+                        titleW = freeW - primaryW;
+                    }
+                }
+                else
+                {
+                    titleW = headerRect.width - DeleteBtnW - FoldoutIconW;
+                    primaryW = 0f;
+                }
+
+                var foldoutRect = new Rect(headerRect.x + 14, headerRect.y, titleW, headerRect.height);
                 familyFoldouts[fi] = EditorGUI.Foldout(foldoutRect, familyFoldouts[fi], title, true, foldoutStyle);
 
-                var btnRect = new Rect(headerRect.xMax - 22, headerRect.y, 20, headerRect.height);
+                if (collapsed)
+                {
+                    var nameRect = new Rect(
+                        headerRect.xMax - DeleteBtnW - Pad - primaryW - Pad - InlineNameW,
+                        headerRect.y, InlineNameW, headerRect.height);
+                    if (nameProp != null)
+                        EditorGUI.PropertyField(nameRect, nameProp, GUIContent.none);
+
+                    var primaryRect = new Rect(
+                        headerRect.xMax - DeleteBtnW - Pad - primaryW,
+                        headerRect.y, primaryW, headerRect.height);
+                    EditorGUI.PropertyField(primaryRect, primaryProp, GUIContent.none);
+                }
+
+                var btnRect = new Rect(headerRect.xMax - DeleteBtnW, headerRect.y, DeleteBtnW, headerRect.height);
                 GUI.backgroundColor = new Color(1f, 0.47f, 0.47f);
-                if (GUI.Button(btnRect, "\u2715"))
+                if (GUI.Button(btnRect, "✕"))
                 {
                     GUI.backgroundColor = Color.white;
                     familiesProp.DeleteArrayElementAtIndex(fi);
@@ -89,7 +134,7 @@ namespace LightSide
                 }
                 GUI.backgroundColor = Color.white;
 
-                if (!familyFoldouts[fi])
+                if (collapsed)
                 {
                     GUILayout.Space(2);
                     EditorGUILayout.EndVertical();
@@ -104,7 +149,24 @@ namespace LightSide
                 EditorGUILayout.BeginVertical(innerStyle);
                 GUI.backgroundColor = prevColor;
 
+                if (nameProp != null)
+                {
+                    EditorGUILayout.PropertyField(nameProp, new GUIContent(
+                        "Name",
+                        "User-facing identifier used by <font=...> rich-text tags (case-sensitive, " +
+                        "unique per stack). Leave empty to make this family unaddressable by name."));
+                }
+
                 EditorGUILayout.PropertyField(primaryProp, new GUIContent("Primary"));
+
+                if (preferredLanguageProp != null)
+                {
+                    EditorGUILayout.PropertyField(preferredLanguageProp, new GUIContent(
+                        "Preferred Language",
+                        "Optional BCP 47 tag (e.g. zh-Hans, zh-Hant, ja, ko, en-US). When text " +
+                        "carries a matching language tag, this family wins during codepoint-to-font " +
+                        "resolution. Leave empty for locale-agnostic families."));
+                }
 
                 if (primaryProp.objectReferenceValue == null)
                 {
@@ -151,7 +213,7 @@ namespace LightSide
                         }
 
                         GUI.backgroundColor = new Color(1f, 0.47f, 0.47f);
-                        if (GUILayout.Button("\u2715", GUILayout.Width(20)))
+                        if (GUILayout.Button("✕", GUILayout.Width(20)))
                         {
                             facesProp.DeleteArrayElementAtIndex(j);
                             GUI.backgroundColor = Color.white;
@@ -189,9 +251,13 @@ namespace LightSide
             {
                 familiesProp.InsertArrayElementAtIndex(familiesProp.arraySize);
                 var newFamily = familiesProp.GetArrayElementAtIndex(familiesProp.arraySize - 1);
+                var name = newFamily.FindPropertyRelative("name");
+                if (name != null) name.stringValue = string.Empty;
                 newFamily.FindPropertyRelative("primary").objectReferenceValue = null;
                 var faces = newFamily.FindPropertyRelative("faces");
                 if (faces != null) faces.ClearArray();
+                var lang = newFamily.FindPropertyRelative("preferredLanguage");
+                if (lang != null) lang.stringValue = string.Empty;
                 familyFoldouts.Add(true);
             }
         }

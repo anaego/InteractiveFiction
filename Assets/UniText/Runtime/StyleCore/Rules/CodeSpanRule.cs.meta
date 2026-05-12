@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 5c3ebacfd8dcf3a4b894ca3878f74ddc
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/StyleCore/Rules/CodeSpanRule.cs
+  uploadId: 908872

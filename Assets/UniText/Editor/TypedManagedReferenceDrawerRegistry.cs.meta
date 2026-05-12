@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: f19c1f88f9d94cc4d819f7b9d5bccb8f
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Editor/TypedManagedReferenceDrawerRegistry.cs
+  uploadId: 908872

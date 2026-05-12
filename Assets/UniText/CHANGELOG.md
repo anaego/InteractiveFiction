@@ -5,6 +5,250 @@ All notable changes to UniText will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.5] - 2026-04-29
+
+### Added
+
+- **`UniTextWorld.RaycastTarget`** (default `true`, inspector + property): turn off on purely decorative world-space text and the camera's `UniTextWorldRaycaster` skips it entirely, mirroring Canvas `Graphic.raycastTarget`.
+- **One-time warning when an interactive `UniTextWorld` plays in a scene without a `UniTextWorldRaycaster`**: instead of pointer events silently doing nothing, a single Console warning points at the camera that needs the raycaster (or at `RaycastTarget = false` for decorative text).
+- **`UniTextBase.CollectRangeEntries(int, int, PooledList<LineRangeEntry>)`** + public `LineRangeEntry` struct: one entry per contiguous glyph run within a line for a cluster range, with X clamped to the line's visible content extent — usable by custom modifiers and tools that need glyph-accurate spans, not just bounding rects.
+- **`TextLine.glyphStart` / `glyphCount` / `widthPx` / `IsRtl`** (public): the positioned-glyph range and mesh-local content width are now exposed on each line for custom modifiers reading layout output, along with a paragraph-direction flag from the BiDi level.
+- **`CanvasHighlightRenderer` and `WorldHighlightRenderer` are now subclassable** (public): plug a custom Canvas-side or world-space highlight visual without reimplementing the lifecycle.
+- **Type-safe per-backend `TextHighlighter` extension points**: subclasses now override `CreateHighlightRenderer(UniText, ...)` and / or `CreateHighlightRenderer(UniTextWorld, ...)` to plug a custom visual on the chosen backend; subclassing `DefaultTextHighlighter` keeps its click / hover / selection logic and only swaps the visual.
+
+### Changed
+
+- **`UniTextBase.CreateHighlightRenderer(string, HighlightOrder)` removed** (breaking for custom highlighter authors): the abstract owner-side hook is gone — implement the typed `TextHighlighter.CreateHighlightRenderer(UniText, ...)` / `CreateHighlightRenderer(UniTextWorld, ...)` overloads instead, and call the protected untyped `CreateHighlightRenderer(name, order)` from event handlers.
+- **`TextHighlighter.OnSelectionChanged` removed** (breaking for custom highlighter authors): drive selection visuals from your own state — `DefaultTextHighlighter.SetSelection` shows the intended pattern.
+- **`GameObject > UI (World) > UniText > World Text` no longer auto-adds `UniTextWorldRaycaster` to `Camera.main`**: pick the camera explicitly; the new in-scene warning will tell you when it's missing.
+- **Double-line decoration**: `<u double>` / `<s double>` now renders each sub-line at the full requested thickness with a same-thickness gap (was: 35% / 30% / 35% summing to the requested thickness), making double underlines and strikethroughs noticeably bolder.
+- **Underline / strikethrough end-caps scale with the line's thickness instead of the underscore-glyph height**: thinner lines get proportionally narrower caps for cleaner edges; thick lines keep close to the previous look.
+
+### Fixed
+
+- **AutoSize text shrunk and didn't grow back when the rect grew taller**: after the shrink-to-fit pass reduced the effective font size to fit the height, increasing the rect's height (without changing the width) left the text shrunken until the width changed.
+- **Thick underlines / strikethroughs clipped at the top and bottom edges**: when the requested line thickness exceeded the underscore glyph's natural rendered height, SDF sampling fell off the glyph and lost ink near the top / bottom of the line; the sampled region now grows with the requested thickness.
+- **Dotted and dashed underlines / strikethroughs drew a partial last mark past the line end**: the pattern loop now stops at the last mark that fits entirely within the segment.
+
+## [2.1.4] - 2026-04-29
+
+### Added
+
+- **Underline / strikethrough styles**: `UnderlineModifier` and `StrikethroughModifier` accept a 5-field parameter — thickness (em or px), offset (em or px), style (`solid`, `double`, `dotted`, `dashed`), skip-ink (line breaks around descenders like g, j, p, q, y), and overlay (line draws above the text instead of behind it); bare `<u>`/`<s>` still defaults to a solid line at the font's metrics.
+- **Scene Visibility opt-out**: a Scene view overlay and `Tools > UniText > Respect Scene Visibility` menu toggle whether hiding a UniText / UniTextWorld GameObject in the Hierarchy clears its rendered text (default: on; per-developer, stored in `EditorPrefs`).
+- **`UniTextMeshGenerator.EffectPass`** + **`currentEffectPass`** (for custom effect modifiers): a modifier can place its duplicate quads above (`PostFace`) or below (`PreFace`) the face of the current glyph, so e.g. an outline modifier draws around an overlay decoration line on top of the text rather than behind it.
+- **`UniTextMeshGenerator.isVirtualGlyph`** (for custom modifiers): the per-glyph callback now fires for modifier-injected quads (decoration lines, kashida, list markers); read this flag to skip them when only real shaped glyphs matter.
+- **`UniTextMeshGenerator.QueueEffectTriangle`** + **`RequestBandUpgradeIfNeeded`** (for custom modifiers that emit their own quads): public helpers to route effect triangles through the shared pre/post-face buffer and to request a wider SDF tile for the current quad without duplicating internal logic.
+- **`LineRenderHelper.DrawDot`** (for custom decoration modifiers): emits one bullet-shaped dot quad sampled from the font's bullet glyph (U+2022), with a stretched-underscore fallback when the font has no bullet.
+- **`UniText/Lit/SDF` and `UniText/Lit/Emoji` now render under URP**: world-space lit text works in Universal Render Pipeline projects from URP 12 (Unity 2021.3 LTS) through URP 17 (Unity 6), receives main-light shadows and additional-light shadows, and uses Forward+ cluster lighting on URP 14+.
+- **Lit shaders cast shadows**: world-space text using `UniText/Lit/SDF` or `UniText/Lit/Emoji` now contributes to shadow maps in both Built-in and URP — SDF silhouette is driven by glyph dilate (effect-mode outlines also cast their inflated shape), and emoji uses bitmap alpha with the new `_ShadowCutoff` material property.
+- **Lit shaders react to nearby point and spot lights**: additional non-important point/spot lights now affect world-space lit text in both pipelines (up to 4 vertex-evaluated in Built-in; per-pixel with shadow attenuation in URP).
+
+### Changed
+
+- **`UniTextMeshGenerator.Current` removed** (breaking for custom modifiers): replace with the per-component instance `uniText.MeshGenerator`.
+- **`UniTextMeshGenerator.onAfterPage` split** (breaking for custom modifiers) into `onMainPassComplete` (emit decoration geometry — also runs through the per-glyph pipeline) and `onMainPassFinalize` (effect modifier flushes); subscribe to whichever your previous handler was for.
+- **`LineRenderHelper.DrawLine` signature** (breaking for custom decoration-line modifiers): now takes the generator, cluster, UV cap range, and an explicit thickness override; color is no longer a parameter — it flows through the per-glyph color / gradient / effect pipeline.
+
+### Fixed
+
+- **Parameter field reset when switching the inspector between objects sharing the same Style layout**: when two assets or components each had a Style at the same index (e.g. a `StylePreset` and a `UniText`), switching selection between them reset the newly-selected object's parameter field to the modifier's defaults.
+- **`<b>` / `<i>` / `<var>` ignored the family chosen by `FontModifier`**: combining `<font=X>` with `<b>`, `<i>`, or `<var>` resolved the bold/italic face or variable axis from the fallback family instead of the family named by `FontModifier`, so e.g. `<font=Roboto><b>` could render Roboto Regular instead of Roboto Bold.
+- **`UniTextWorld` reported infinite mesh bounds**: every world-space text shard reported a 2 km axis-aligned bounding box, breaking frustum culling, shadow caster volumes, and `Renderer.bounds` queries; bounds are now computed from the actual mesh vertices in each shard.
+- **`UniTextWorld` ignored GameObject Layer**: world-space text drew through every camera regardless of culling masks, because the batcher merged all components into one shared layer; the batch now keys on the component's Layer (and re-routes when the Layer changes at runtime), so cameras honor their culling mask.
+- **Underline, strikethrough, and Arabic kashida ignored per-glyph effects**: gradient, outline, shadow, and custom-material modifiers applied to text but skipped its decoration lines and kashida elongation; decoration geometry now runs through the same per-glyph pipeline and picks up all active modifiers uniformly.
+
+## [2.1.3] - 2026-04-27
+
+### Added
+
+- **`ExtrudeModifier`**: adds a 3D extrude / bevel stack behind the text with a per-step color gradient from near to far, configurable offset, dilate, and softness; an optional bevel mode adds intermediate side-faces for chamfered depth. Step count and bevel toggle live on the modifier; tag parameter format: `offsetX,offsetY,#nearColor,#farColor,dilate,softness`.
+- **`EffectModifier` per-layer flush hooks** (for custom multi-layer effect subclasses): `ApplyOwnRequests` is now `protected virtual` and `AppendSharedEffectQuad` is `protected static`, so a subclass can buffer its own per-layer requests and flush them in painter order across all glyphs instead of the default per-glyph order.
+
+### Changed
+
+- **`EffectPacking.PackColor` returns `Vector2`** (breaking for custom effect modifiers and shaders): packed color now occupies `texcoord2.y` and `texcoord2.z`, and custom shaders must call `UnpackColor(input.texcoord2.y, input.texcoord2.z)` — the single-float `UnpackColor(float)` overload is gone.
+- **Color alpha is composited with the component's base alpha**: `<color=#RRGGBBAA>` ranges, gradient stops, and underline / strikethrough colours now multiply their alpha with the component alpha instead of discarding it, so `<color=#FF000080>` renders at 50% opacity (was: forced to component alpha). Use a fully opaque parameter to restore the previous look.
+- **`LineHeightModifier`: single value parameter, no mode**: the inspector now shows one `Value` field, and `<lh=N>` always sets line height. Existing `<lh=h,N>` markup still parses unchanged; existing `<lh=s,N>` parses but now sets height — use `<lh=+N>` for the additive equivalent.
+- **`Glyph Diagnostic` menu moved**: now under `Tools > UniText > Glyph Diagnostic` (was top-level `UniText > Glyph Diagnostic`).
+
+### Fixed
+
+- **Outline and shadow color randomly tinted on some GPUs**: the previous color packing produced NaN/Inf bit patterns that some drivers canonicalize at the vertex–fragment interpolator boundary, randomly altering the green channel as colors crossed certain thresholds.
+- **Multiple `GradientModifier` instances on one component overwrote each other**: each instance kept a private 1-based gradient list and stomped the shared per-codepoint index buffer, so the second modifier silently replaced the first one's gradient assignments.
+- **Parameter field stuck on stale values after changing the modifier type**: switching a `Style`'s `Modifier` (or a child of `CompositeModifier`) in the inspector now resets the parameter field to the new modifier's defaults instead of keeping the previous modifier's text.
+
+## [2.1.2] - 2026-04-26
+
+### Added
+
+- **`UniTextBase.Animated` event**: raised after Unity Animator applies animated property values to a `UniText` / `UniTextWorld`; modifiers with their own animatable fields can subscribe, diff their state, and call `SetDirty` with the matching `UniTextDirtyFlags`.
+- **`AnimationHandlerBase<T>`**: public base class for extending the built-in Animator diff with subclass-specific animatable fields when authoring a custom `UniTextBase` subclass.
+
+### Fixed
+
+- **Unity Animator did not update rendered text**: animating `fontSize`, `color`, `wordWrap`, `autoSize`, `minFontSize` / `maxFontSize`, `baseDirection`, `horizontalAlignment` / `verticalAlignment`, `overEdge` / `underEdge`, `leadingDistribution` — and on `UniTextWorld` also `sortingOrder` / `sortingLayerID` — silently had no visual effect.
+
+## [2.1.1] - 2026-04-26
+
+### Added
+
+- **`IGradientProvider`** with three built-in implementations — `GlobalSettingsGradientProvider` (default, reads `UniTextSettings.Gradients`), `AssetGradientProvider` (per-modifier asset reference), `InlineGradientProvider` (inline list edited on the modifier itself); pick the source for each `GradientModifier` from the inspector.
+- **Live gradient preview in the `GradientModifier` parameter dropdown**: each row shows the actual gradient swatch on the right and reflects the provider currently assigned to that modifier, not just the project-wide settings.
+- **`GradientNotifier`**: static `AnyChanged` event raised when any gradient source visible to `GradientModifier` is edited (asset, inline list, or a custom provider invoking `NotifyChanged`); affected text rebuilds on the next frame without manual refresh.
+- **Public Unicode character properties for modifier / parse-rule authors**: `UnicodeData.GetSimpleUppercase` / `GetSimpleLowercase` / `GetSimpleTitlecase`, `GetGeneralCategory` (+ public `GeneralCategory` enum), `GetScript`, `IsExtendedPictographic` / `IsEmojiPresentation` / `IsEmojiModifierBase`, `IsDefaultIgnorable` — backed by bundled UCD tables and identical across Mono, IL2CPP, and standard .NET.
+- **`ParameterOption` + `ContextualParameterOptionsProvider`**: extension API for `[ParameterField("enum:@key")]` dropdowns — options can carry a display label, a per-row preview decorator, and a description, and can be derived from the owning modifier instance.
+
+### Changed
+
+- **`UppercaseModifier` / `LowercaseModifier` / `SmallCapsModifier` resolve case via the bundled Unicode case mapping table** instead of `char.ToUpper/LowerInvariant`; behavior is identical across Mono, IL2CPP, and standard .NET runtimes.
+
+### Fixed
+
+- **Emoji rendered as `.notdef` inside a `FontModifier` range**: emoji codepoints in a range covered by `FontModifier` were forced through the chosen text font, which has no emoji glyphs; emoji now always resolve to the emoji font regardless of any explicit font override.
+- **`FontModifier` did not fall back to the FontStack chain**: codepoints not covered by the named family produced `.notdef` instead of falling through the standard fallback chain (as the docs already promised).
+- **`UppercaseModifier` skipped Greek final sigma (U+03C2 ς)**: the last character of words like "πόνος" was left lowercase due to a runtime gap in Mono's case tables.
+
+## [2.1.0] - 2026-04-25
+
+### Added
+
+- **Language-aware shaping (BCP 47 + OpenType `locl`)**: fonts with language-specific glyphs (pan-CJK like Noto Sans CJK / Source Han Sans) now render the correct regional forms. Apply per-range with `LanguageModifier`, per-component via `UniText.Language`, or project-wide via `UniTextSettings.Language`.
+- **`FontModifier`**: override the font on a text range by referencing a `FontFamily.name` from the component's `UniTextFontStack`. A matched family wins over both `preferredLanguage` selection and the default fallback chain; the normal chain still kicks in for codepoints the chosen family can't render. Unknown names log a one-time warning.
+- **Per-family language hint**: `FontFamily.preferredLanguage` — one font stack can hold region-specific cuts (SC/TC/JP/KR) and pick the right one automatically from the active language.
+- **Named font families**: `FontFamily.name` lets you address a family directly from `FontModifier` or code instead of relying on fallback order.
+- **World-space batcher shard size**: `UniTextSettings.WorldBatcherShardTargetVertexCount` to tune batching granularity vs. rebuild cost for dense world-space scenes.
+- **Custom sub-mesh emission**: a modifier can now emit its own geometry with a custom material/atlas that renders `Under`, `Above`, or alongside the base text, ordered by a `sortIndex` — via `UniTextMeshGenerator.onCollectSubMeshes` and `UniTextRenderData`.
+- **Quad expansion API**: `UniTextMeshGenerator.ExpandQuad` + `faceBaseIdx` + `DefaultSdfPadding` — a supported way for effect modifiers to grow a glyph quad so wide outlines / fake-bold / soft shadow don't clip at the quad edge.
+- **Text-model properties on `UniTextBase`**: four zero-alloc views covering the full pipeline from authored text to what's drawn.
+  - `Text` — the serialized authored value.
+  - `RawText` (`ReadOnlyMemory<char>`) — the runtime source assigned via `Text`/`SetText` before any resolver substitution.
+  - `RenderedText` (`ReadOnlyMemory<char>`) — what's actually fed into parsing/shaping/layout: the resolver's output if one is active, otherwise `RawText`.
+  - `CleanText` (`ReadOnlySpan<char>`) — `RenderedText` with markup stripped.
+  - `TextOverride` — flags (`SetText` / `Resolver`) indicating which runtime sources currently diverge from the serialized `Text`.
+- **Text resolver hook (`IUniTextResolver` + `UniTextBase.TextResolver`)**: override a component's source text (localization preview, template expansion, key-to-string lookup) without writing to the serialized `text` field, so scenes and prefabs don't get marked dirty.
+- **`SetText(ReadOnlyMemory<char>)` / `SetText(string)`**: assign text at runtime without writing to the serialized field and without marking the scene/prefab dirty.
+- **`UniText.Language` property**: one-line way to apply a BCP 47 language to the whole text from code, without building a style manually.
+- **Click / hover / selection highlighting on `UniTextWorld`**: the `Highlighter` slot now lives on `UniTextBase` and works unchanged on both Canvas and world-space text.
+- **Custom highlighter API**: `TextHighlighter` subclasses can now target both Canvas and world-space text by requesting a backend-agnostic surface — `owner.CreateHighlightRenderer(name, HighlightOrder.Behind | Above)` returns a `TextHighlightRenderer` with `Color`, `SetRects(...)`, `Clear()`, `Destroy()`.
+- **Style/modifier query and mutation API on `UniTextBase`**: `HasModifier<T>()`, `TryGetStyle<T>()`, `SetWholeText<T>(parameter)`, `ClearWholeText<T>()`, `ToggleWholeText<T>(parameter)`, `GetWholeTextParameter<T>()` and non-generic `Type` overloads. Replaces the manual `new Style { Rule = new RangeRule { data = ... }, Modifier = ... }` boilerplate for programmatic styling.
+- **`UniTextWorld` public events + active registry**: static `Activated` / `Deactivated`, per-instance `RenderDataAvailable` / `RenderDataCleared` / `SortingChanged` / `ParentChanged`, and a `UniTextWorld.Active` list of currently enabled instances. Observe world-space text state without scene scans.
+- **Click / hover on `UniTextWorld`**: add a `UniTextWorldRaycaster` component to a `Camera` and world-space text receives the same pointer events that worked on Canvas — `RangeClicked` / `RangeEntered` / `RangeExited`, link and hashtag events. No per-text colliders needed. Optional `BlockingObjects` setting to respect 2D/3D physical geometry as occluders.
+- **`UniText` in Add Component menu**: discoverable under `UI (Canvas) > UniText` in the inspector's Add Component dropdown.
+- **`MaterialModifier`**: apply a custom `Material` to a text range. Shader gets the glyph atlas as a `Texture2DArray`, two constant per-text UV4 channels (`ConstantUv2`/`ConstantUv3`) for runtime-animated shader params, and an optional per-glyph UV writer for staggered effects. Three compose modes — `Replace` (hide the base text on the range), `Over`, `Under`. Parameter is an optional tint color. Separate `emojiMaterial` slot for emoji glyphs inside the range.
+- **Protection parse rules**: three standalone rules that shield content from any other parse rule (no pairing modifier needed) — `NoparseTagRule` (`<noparse>…</noparse>`, forgiving close), `CodeSpanRule` (balanced backtick runs per CommonMark §6.1: `` `x` ``, ` ``x`` `, ` ```x``` `), and `BackslashEscapeRule` (`\*`, `\[`, …, full CommonMark ASCII punctuation set).
+- **Standalone parse rules**: a rule can be registered on `UniText` without a paired modifier (opt-in via `IParseRule.IsStandalone`) — it applies its effect on its own. Used by the three protection rules above.
+- **`Style` static builders**: `Style.WholeText(modifier, parameter)`, `Style.Range(modifier, start, end, parameter)`, `Style.Tag(modifier, tagName, defaultParameter)` — replace the `new Style { Modifier = ..., Rule = new RangeRule { data = new() { ... } } }` boilerplate when building styles in code.
+- **`RangeEx.WholeText` / `RangeEx.IsWholeText(...)`**: canonical `".."` constant and a predicate that accepts any equivalent syntactic form (`".."`, `"..^0"`, `"0.."`) — useful when building rules from user input.
+- **`SubMeshModifier` abstract base class**: base class for writing your own modifiers that produce a separate sub-mesh with its own material (the same surface `MaterialModifier` is built on).
+- **Custom shader authoring**: `Assets/Create > UniText > Custom Material Shader` menu scaffolds a new shader pre-wired for `MaterialModifier` (uses `UniText_Custom.cginc`, binds the glyph atlas `Texture2DArray`). Three example shaders ship as starting points (Dissolve, Hologram, Rainbow).
+- **Noise generator**: `Tools > UniText > Noise Generator` window produces seamless grayscale value / FBM PNG textures (64–1024 px, configurable seed / frequency / octaves / lacunarity / gain / invert / tileable). Used by the example shaders; available for any procedural need.
+- **Lit shaders for world-space text**: `UniText/Lit/SDF` and `UniText/Lit/Emoji` pick up ambient + a single directional light + fog, suitable for `UniTextWorld` in a 3D scene.
+- **Default materials**: ready-to-use `UniTextLit`, `UniTextEmojiLit`, `UniTextDisolve`, `UniTextHologram`, `UniTextRainbow` materials in `Defaults/Materials/` (drop on a `MaterialModifier` or assign as the material of a `UniTextWorld`).
+- **`GameObject > UI (World) > UniText > World Text` menu item**: creates a ready-to-go `UniTextWorld` object and auto-adds a `UniTextWorldRaycaster` to `Camera.main` so pointer events work out of the box.
+- **Basic Usage sample extended**: new Language and Font sections, plus a bundled Source Han Sans subset (`Fonts/SourceHanSans-Demo.otf`, ~96 KB, SIL OFL 1.1) that actually shows CJK regional-glyph differences in the Language example.
+- **Language APIs (public)**: `LanguageRegistry.Register/GetHandle/GetTag`, `LanguageMatching.Matches`, `Shaper.ShapeInto(..., IntPtr language)` overload, `HB.LanguageFromString` / `HB.SetLanguage` / `HB.ShapeRun(..., IntPtr language, ...)`, `UniTextFontStack.FindFontForCodepoint(uint, string preferredLanguage, ...)`, `UniTextFontProvider.FindFontForCodepoint(int, byte language)` — for code that drives shaping manually.
+- **`UniTextFontStack.TryGetFamilyByName(name, out family)` / `UniTextFontProvider.TryGetFontIdByFamilyName(name)`**: resolve a `FontFamily.name` to a family or fontId at runtime.
+- **`SharedFontCache.TryGet` / `Set` language overloads**: per-codepoint font-cache key now includes the active language, so the same codepoint can cache different results under different language tags.
+- **`UniTextBuffers.PrepareStartMargins()`**: for modifier authors writing start-margin values (list indentation etc.) — lazily allocates the buffer to fit the current codepoint count.
+- **`PooledBuffer<T>.ClearAll()` / `PooledArrayAttribute<T>.ClearAll()`**: clear the entire backing array (not just the `[0..count)` prefix) — matches the modifier-attribute usage pattern where the buffer is read at arbitrary indices.
+- **`UniTextMaterialCache.Highlight`**: shared flat-colour transparent material used for range highlights (exposed for custom highlighter renderers).
+- **`Run.language` / `ShapedRun.language`** (public struct fields): carries the language-registry index through the pipeline.
+- **Project-wide language in Project Settings**: a Localization section in the UniText Settings panel edits `UniTextSettings.Language` without writing code.
+- **`Tile Size Offset` per-font setting** (UniTextFont inspector): nudge the auto-classified SDF atlas tile size up or down by ±2 steps to force higher quality or save atlas memory; ignored on glyphs that have an explicit per-glyph tile override.
+
+### Changed
+
+- **Faster first-frame glyph generation**: SDF/MSDF preparation scales much better with glyph complexity — the internal contour-overlap check is now linear instead of quadratic in the number of curve segments per glyph. Biggest wins on CJK, decorative, and symbol fonts.
+- **Inspector modifier/rule picker**: the popup now sizes to its content and resizes when groups expand/collapse, instead of truncating at 15 items.
+- **FontStack inspector (collapsed family row)**: shows `name` and `primary` inline so you can rename / swap fonts without expanding the foldout.
+- **Dirty flags / render mode enums lifted to top level** (breaking): `UniTextBase.DirtyFlags` → `UniTextDirtyFlags`, `UniTextBase.RenderModee` → `UniTextRenderMode`. Code referencing the old nested enums will not compile.
+- **`CleanText` return type** (breaking): `string` → `ReadOnlySpan<char>`. The backing buffer is pooled and may be rewritten on the next rebuild; copy via `new string(span)` if you need a stable string.
+- **`Text` getter semantics** (potentially breaking): always returns the serialized authored value, even when a buffer-based `SetText` has overridden the runtime text. Read the runtime-assigned text via `RawText` (or `RenderedText` if a resolver is in play).
+- **`TextHighlighter.Initialize(UniText)` → `Initialize(UniTextBase)`** (breaking for custom highlighter subclasses). The `owner` field type switched from `UniText` to `UniTextBase` for the same reason — highlighter now works on both Canvas and world-space text.
+- **Per-tag parse-rule classes are now `internal [Obsolete]`** (breaking if referenced in code): `BoldParseRule`, `ItalicParseRule`, `ColorParseRule`, `SizeParseRule`, `UnderlineParseRule`, `StrikethroughParseRule`, `CSpaceParseRule`, `LineSpacingParseRule`, `LineHeightParseRule`, `OutlineParseRule`, `ShadowParseRule`, `ObjParseRule`, `EllipsisTagRule`, `UppercaseParseRule`, `GradientParseRule`, `LinkTagParseRule`. Existing serialized assets still deserialize; new code should use `TagRule` (directly or via `Style.Tag(modifier, "name")`).
+- **Custom `EffectModifier` subclasses** (breaking): the extension hook is now `OnGlyphEffect()` + `EnqueueEffectQuad(...)` instead of `RecordEffectGlyph(...)`, and the `HasVertexShifts()` override is gone. Built-in outline/shadow are unchanged for consumers; this only matters if you wrote your own effect subclass.
+
+### Fixed
+
+- **Auto-size on `UniTextWorld`**: `autoSize` on world-space text silently fell back to `maxFontSize` — the size-fitting step was Canvas-only. It now runs for world-space components too.
+- **`UniTextWorld` sorting vs. other renderers**: world-space text was batched into one mesh regardless of each instance's sorting layer/order, so it rendered in front of or behind `SpriteRenderer` and other renderers as one block instead of interleaving per-instance. The batcher now groups by `(material, SortingLayer, OrderInLayer, SortingGroup)`, so each group becomes its own draw with the correct sorting.
+- **Outline / shadow artifacts on emoji**: `OutlineModifier` and `ShadowModifier` applied their effect passes to emoji glyphs too, which rendered color bitmaps through an SDF effect shader and produced garbage. Both now skip color bitmap glyphs.
+
+
+
+## [2.0.15] - 2026-04-20
+
+### Fixed
+
+- **WebGL emoji disappearing after text change**: Reusing the same emoji in a later text update left a transparent gap where the emoji should be rendered.
+- **WebGL emoji missing when not at the start of text**: Emoji appearing after any preceding characters — including dual-presentation symbols like ⬅, ➡, ❤, ☀ — were not rendered and took no layout space.
+- **`<size>` tag spreading letters apart at non-100% scales**: Letters inside a size-scaled range kept their original spacing and bearings while only the glyph quads shrank or grew, so small scales (e.g. `<size=10%>`) produced tiny letters scattered across the original word width instead of a proportionally compact word.
+- **Diacritics detached from base letter inside `<size>`**: Arabic and other combining marks floated far from their base glyph when a per-range size scale was applied, because mark offsets were not scaled along with the base advance.
+
+## [2.0.14] - 2026-04-18
+
+### Fixed
+
+- **RTL list marker position unstable**: Bullet and number markers in right-to-left lists (Arabic, Hebrew) shifted unpredictably when the item text changed and could render in the wrong position depending on the first character of the line.
+
+## [2.0.13] - 2026-04-18
+
+### Changed
+
+- **Temporarily disabled native atlas upload path**: Atlas texture updates fall back to the standard upload to avoid crashes on macOS and glyph corruption seen in 2.0.0–2.0.12. Native path will return once stabilized.
+
+## [2.0.12] - 2026-04-17
+
+### Fixed
+
+- **Korean text breaking mid-word**: The line breaker could split Korean (Hangul) text between adjacent syllables at optional break points, producing broken line wraps inside words.
+- **SDF/MSDF artifacts inside glyphs with holes**: Bridge regions between overlapping contours (letters such as O, A, B, D, e) produced false distance gradients, visible as faint streaks or specks inside the hollow areas of the glyph.
+- **`enableWordWrap` toggle not re-flowing text**: Switching the word-wrap setting between updates could reuse the cached line layout from the previous mode, leaving text wrapped (or unwrapped) incorrectly until another layout-invalidating change.
+
+## [2.0.11] - 2026-04-15
+
+### Fixed
+
+- **Emoji ignoring RectMask2D soft edges**: Emoji glyphs were clipped with a hard edge under a `RectMask2D` with non-zero softness, while surrounding UI elements faded smoothly across the same boundary.
+
+## [2.0.10] - 2026-04-15
+
+### Fixed
+
+- **Style preset effects leaking onto other text**: Modifiers inside a `StylePreset` (bold/italic/underline used via `CompositeModifier`) kept their attribute flags and event subscriptions between text updates, so italic, underline, and bold visibly appeared on unrelated characters after switching to text that did not use the preset tags.
+
+## [2.0.9] - 2026-04-15
+
+### Fixed
+
+- **Underline/Strikethrough skipping lines at small font sizes**: At Font Size ≤3.6, every other line rendered without its underline or strikethrough — lines 1 and 3 got a line, lines 2 and 4 were bare.
+- **UniText Text/Button created outside prefab in Prefab Mode**: Right-clicking empty space in the Hierarchy while editing a prefab placed the new `UniText - Text` or `UniText - Button` under a Canvas in the open scene instead of inside the prefab.
+
+## [2.0.8] - 2026-04-14
+
+### Added
+
+- **`ParameterReader` exposed as public API**: Custom modifier authors can now parse tag parameters (floats, unit floats, colors, tokens) using the same locale-safe reader as built-in modifiers.
+- **`GlyphAtlas` read-only introspection API**: The SDF and MSDF atlases are now reachable via `GlyphAtlas.GetInstance(RenderMode)`, with `TryGetEntry` returning a public `GlyphEntry` (page index, encoded tile, glyph metrics, pixel size). Key-building helpers `MakeKey`, `DefaultVarHash`, `ComputeVarHash48`, the `TileSizeFromEncoded` decoder, and constants `Pad`/`PageStride`/`DefaultBandPixels` are also accessible for tooling and custom renderers.
+
+### Changed
+
+- **Editor menus reorganized**: `Tools/UniText Tools` and `Tools/UniText Migration` consolidated under the `Tools/UniText/` submenu. GameObject creation moved from `GameObject/UI/UniText - Text|Button` to `GameObject/UI (Canvas)/UniText/Text|Button`.
+
+### Fixed
+
+- **Trailing empty line missing from range bounds**: `GetRangeBounds` skipped the empty line produced by a trailing newline (e.g. `"abc\n"`), so selection highlighting and link/hashtag bounds covering that line returned no rectangle.
+- **Stencil material showing wrong atlas texture**: Text under a `Mask` could render with a stale or mismatched atlas texture after an atlas resize, especially when a renderer group mixed text and emoji glyphs.
+- **Atlas shrink corrupting glyphs**: Trimming unused atlas pages used a mixed GPU/CPU copy path that could leave stale slice data and drop or corrupt glyphs after the atlas compacted.
+
+## [2.0.7] - 2026-04-08
+
+### Fixed
+
+- **Font Subsetter dropping OpenType layout tables**: Subset fonts lost all GSUB/GPOS/GDEF/kern tables, breaking contextual shaping (Arabic connected forms, Indic conjuncts, ligatures, kerning).
+- **Android 16KB page size compatibility**: Native GPU library failed to load on Android 15+ devices with 16KB memory pages.
+
 ## [2.0.3] - 2026-04-07
 
 ### Added

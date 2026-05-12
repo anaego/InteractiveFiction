@@ -61,7 +61,7 @@ namespace LightSide
                 return lookup.Keys;
             }
         }
-
+        
         /// <summary>
         /// Gets the number of gradients.
         /// </summary>
@@ -91,27 +91,19 @@ namespace LightSide
 #if UNITY_EDITOR
             EditorUtility.SetDirty(this);
 #endif
-            
+
             lookup.Add(gradientName, gradient);
-            OnChanged();
+            GradientNotifier.NotifyChanged();
         }
-        
+
 #if UNITY_EDITOR
         private void OnValidate()
         {
             lookup = null;
-            OnChanged();
+            GradientNotifier.NotifyChanged();
         }
 #endif
 
-        private void OnChanged()
-        {
-            if (!UniTextSettings.IsNull && UniTextSettings.Gradients == this)
-            {
-                UniTextSettings.Instance.InvokeChanged();
-            }
-        }
-        
         private void OnEnable()
         {
             lookup = null;

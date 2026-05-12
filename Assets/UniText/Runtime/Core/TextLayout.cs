@@ -169,7 +169,7 @@ namespace LightSide
         /// </para>
         /// </remarks>
         public void Layout(
-            ReadOnlySpan<TextLine> lines,
+            Span<TextLine> lines,
             ReadOnlySpan<ShapedRun> runs,
             ReadOnlySpan<ShapedGlyph> glyphs,
             ReadOnlySpan<float> perLineAdvances,
@@ -228,10 +228,11 @@ namespace LightSide
 
             for (var i = 0; i < lineCount; i++)
             {
-                ref readonly var line = ref lines[i];
+                ref var line = ref lines[i];
                 var runStart = line.runStart;
                 var runCount = line.runCount;
                 var runEnd = runStart + runCount;
+                var lineGlyphStart = glyphCount;
 
                 var lineWidth = line.width * glyphScale;
 
@@ -299,6 +300,10 @@ namespace LightSide
                         x += advanceScaled;
                     }
                 }
+
+                line.glyphStart = lineGlyphStart;
+                line.glyphCount = glyphCount - lineGlyphStart;
+                line.widthPx = lineWidth;
 
                 if (lineWidth > maxLineWidth)
                     maxLineWidth = lineWidth;

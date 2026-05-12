@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: af6edbaacc4568c4b9edc00189d3ca86
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Editor/UniTextWorldRaycasterEditor.cs
+  uploadId: 908872

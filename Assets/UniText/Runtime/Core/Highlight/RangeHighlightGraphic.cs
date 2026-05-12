@@ -8,7 +8,7 @@ namespace LightSide
     /// UI Graphic component that renders highlight rectangles for text ranges.
     /// </summary>
     /// <remarks>
-    /// Used by <see cref="DefaultTextHighlightHandler"/> to draw click/hover highlights.
+    /// Used by <see cref="CanvasHighlightRenderer"/> to draw click/hover highlights.
     /// Renders multiple rectangles efficiently in a single draw call.
     /// </remarks>
     [RequireComponent(typeof(CanvasRenderer))]
@@ -25,11 +25,14 @@ namespace LightSide
         /// <summary>
         /// Sets the rectangles to render.
         /// </summary>
-        public void SetRects(List<Rect> bounds)
+        public void SetRects(IReadOnlyList<Rect> bounds)
         {
             rects.Clear();
             if (bounds != null)
-                rects.AddRange(bounds);
+            {
+                for (var i = 0; i < bounds.Count; i++)
+                    rects.Add(bounds[i]);
+            }
             SetVerticesDirty();
         }
 

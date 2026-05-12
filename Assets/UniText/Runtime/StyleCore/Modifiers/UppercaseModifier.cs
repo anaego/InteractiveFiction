@@ -7,7 +7,9 @@ namespace LightSide
     /// </summary>
     /// <remarks>
     /// No parameter. The transformation happens during Apply, after parsing but before shaping,
-    /// ensuring correct glyph rendering for uppercase characters.
+    /// ensuring correct glyph rendering for uppercase characters. Uses the bundled UCD case
+    /// mapping table rather than <c>char.ToUpperInvariant</c> to avoid runtime gaps in Mono/IL2CPP
+    /// (e.g. Greek final sigma U+03C2 → Σ).
     /// </remarks>
     [Serializable]
     [TypeGroup("Text Style", 0)]
@@ -21,15 +23,7 @@ namespace LightSide
             var clampedEnd = Math.Min(end, cpCount);
 
             for (var i = start; i < clampedEnd; i++)
-                codepoints[i] = ToUpperCodepoint(codepoints[i]);
-        }
-
-        private static int ToUpperCodepoint(int codepoint)
-        {
-            if (codepoint <= UnicodeData.MaxBmp)
-                return char.ToUpperInvariant((char)codepoint);
-
-            return codepoint;
+                codepoints[i] = UnicodeData.GetSimpleUppercase(codepoints[i]);
         }
     }
 }

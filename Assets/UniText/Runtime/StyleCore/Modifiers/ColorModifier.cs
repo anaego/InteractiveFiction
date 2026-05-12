@@ -14,7 +14,7 @@ namespace LightSide
     /// - Hex: #RGB, #RRGGBB, #RRGGBBAA
     /// - Named colors: white, black, red, green, blue, yellow, cyan, magenta, orange, purple, gray, lime, brown, pink, navy, teal, olive, maroon, silver, gold
     ///
-    /// The alpha channel from the color parameter is preserved. The base alpha is inherited from the component's color.
+    /// The alpha channel of the color parameter is multiplied with the component's base alpha (per W3C alpha compositing). A fully opaque parameter inherits the component alpha; a semi-transparent parameter scales it further.
     /// </remarks>
     /// <seealso cref="IParseRule"/>
     [Serializable]
@@ -47,7 +47,7 @@ namespace LightSide
 
         private void OnGlyph()
         {
-            var gen = UniTextMeshGenerator.Current;
+            var gen = uniText.MeshGenerator;
 
             if (gen.font.IsColor) return;
 
@@ -58,8 +58,8 @@ namespace LightSide
                 return;
 
             var color = UnpackColor(packed);
-            color.a = gen.defaultColor.a;
-            var baseIdx = gen.vertexCount - 4;
+            color.a = (byte)((color.a * gen.defaultColor.a + 127) / 255);
+            var baseIdx = gen.faceBaseIdx;
             var colors = gen.Colors;
 
             colors[baseIdx] = color;

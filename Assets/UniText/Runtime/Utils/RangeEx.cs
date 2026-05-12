@@ -12,6 +12,30 @@ namespace LightSide
     /// <seealso cref="IndexEx"/>
     public static class RangeEx
     {
+        /// <summary>Canonical whole-text range expression. Equivalent to <c>Range.All</c>.</summary>
+        public const string WholeText = "..";
+
+        /// <summary>
+        /// Returns true if the expression parses to a range covering the entire text,
+        /// regardless of which syntactic form was used (<c>".."</c>, <c>"..^0"</c>, <c>"0.."</c>, etc.).
+        /// </summary>
+        public static bool IsWholeText(string rangeExpression)
+        {
+            if (string.IsNullOrEmpty(rangeExpression))
+                return false;
+
+            if (!RangeEx.TryParse(rangeExpression, out var range))
+                return false;
+
+            return IsWholeText(range);
+        }
+
+        /// <summary>Returns true if the range is equivalent to <see cref="System.Range.All"/>.</summary>
+        public static bool IsWholeText(Range range)
+        {
+            return range.Start.Equals(Index.Start) && range.End.Equals(Index.End);
+        }
+        
         /// <summary>
         /// Parses a string into a <see cref="Range"/>.
         /// </summary>

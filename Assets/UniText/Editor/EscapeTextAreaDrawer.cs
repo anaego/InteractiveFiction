@@ -15,7 +15,7 @@ namespace LightSide
 
         private static string GetPrefKey(SerializedProperty property)
         {
-            return $"EscapeTextArea_{property.propertyPath}_{property.serializedObject.targetObject.GetInstanceID()}";
+            return $"EscapeTextArea_{property.propertyPath}_{ObjectUtils.GetInstanceIdCompat(property.serializedObject.targetObject)}";
         }
 
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)

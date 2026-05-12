@@ -30,7 +30,7 @@ namespace LightSide
 
         private void OnGlyph()
         {
-            var gen = UniTextMeshGenerator.Current;
+            var gen = uniText.MeshGenerator;
             if (gen.font.IsColor) return;
 
             var cluster = gen.currentCluster;
@@ -43,7 +43,7 @@ namespace LightSide
             var italicStyle = gen.font?.ItalicStyle ?? 12f;
             var shearValue = italicStyle * 0.01f;
 
-            var baseIdx = gen.vertexCount - 4;
+            var baseIdx = gen.faceBaseIdx;
             var verts = gen.Vertices;
 
             var blY = verts[baseIdx].y;

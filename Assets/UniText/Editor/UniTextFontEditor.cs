@@ -15,12 +15,14 @@ namespace LightSide
         private SerializedProperty italicStyleProp;
         private SerializedProperty fontScaleProp;
         private SerializedProperty sdfDetailMultiplierProp;
+        private SerializedProperty tileSizeOffsetProp;
         private SerializedProperty glyphOverridesProp;
 
         private bool faceInfoFoldout;
         private bool glyphOverridesFoldout;
 
         private float pendingSdfDetail;
+        private int pendingTileSizeOffset;
         private int pendingGlyphOverridesHash;
         private bool pendingInitialized;
 
@@ -51,6 +53,7 @@ namespace LightSide
             italicStyleProp = serializedObject.FindProperty("italicStyle");
             fontScaleProp = serializedObject.FindProperty("fontScale");
             sdfDetailMultiplierProp = serializedObject.FindProperty("sdfDetailMultiplier");
+            tileSizeOffsetProp = serializedObject.FindProperty("tileSizeOffset");
             glyphOverridesProp = serializedObject.FindProperty("glyphOverrides");
 
             InitializePendingValues();
@@ -59,6 +62,7 @@ namespace LightSide
         private void InitializePendingValues()
         {
             pendingSdfDetail = sdfDetailMultiplierProp.floatValue;
+            pendingTileSizeOffset = tileSizeOffsetProp.intValue;
             pendingGlyphOverridesHash = ComputeGlyphOverridesHash();
             pendingInitialized = true;
         }
@@ -67,6 +71,7 @@ namespace LightSide
         {
             if (!pendingInitialized) return false;
             return !Mathf.Approximately(pendingSdfDetail, sdfDetailMultiplierProp.floatValue)
+                || pendingTileSizeOffset != tileSizeOffsetProp.intValue
                 || pendingGlyphOverridesHash != ComputeGlyphOverridesHash();
         }
 
@@ -142,8 +147,8 @@ namespace LightSide
                 "Visual scale multiplier. Use to normalize fonts that appear too small or too large by design."));
             EditorGUILayout.PropertyField(sdfDetailMultiplierProp, new GUIContent("SDF Detail",
                 "SDF tile detail multiplier. Higher values force larger atlas tiles for better quality on fonts with thin strokes (e.g. calligraphic)."));
-            if (sdfDetailMultiplierProp.floatValue > 1.01f)
-                EditorGUILayout.HelpBox("Values above 1 increase atlas tile sizes, which improves quality but increases rasterization time and atlas memory usage.", MessageType.Info);
+            EditorGUILayout.IntSlider(tileSizeOffsetProp, -2, 2, new GUIContent("Tile Size Offset",
+                "Step offset applied after SDF Detail classification along the {64, 128, 256} hierarchy. +1 picks the next larger tile, -1 the next smaller. Clamped at hierarchy bounds. Per-glyph overrides ignore this offset."));
             EndSection();
 
             if (!isMultiEdit)
@@ -172,6 +177,7 @@ namespace LightSide
                 if (GUILayout.Button("Revert", GUILayout.Height(25), GUILayout.Width(60)))
                 {
                     sdfDetailMultiplierProp.floatValue = pendingSdfDetail;
+                    tileSizeOffsetProp.intValue = pendingTileSizeOffset;
                     serializedObject.ApplyModifiedProperties();
                     InitializePendingValues();
                 }
@@ -747,9 +753,9 @@ namespace LightSide
 
             EditorGUILayout.Space(10);
 
-            DrawGlyphAtlasDebug("SDF Atlas", GlyphAtlas.GetInstance(UniText.RenderModee.SDF), false,
+            DrawGlyphAtlasDebug("SDF Atlas", GlyphAtlas.GetInstance(UniTextRenderMode.SDF), false,
                 ref debugSdfSlice, font.name);
-            DrawGlyphAtlasDebug("MSDF Atlas", GlyphAtlas.GetInstance(UniText.RenderModee.MSDF), true,
+            DrawGlyphAtlasDebug("MSDF Atlas", GlyphAtlas.GetInstance(UniTextRenderMode.MSDF), true,
                 ref debugMsdfSlice, font.name);
         }
 
@@ -852,8 +858,8 @@ namespace LightSide
 
         public override void OnPreviewSettings()
         {
-            var sdfPages = GlyphAtlas.GetInstance(UniText.RenderModee.SDF).PageCount;
-            var msdfPages = GlyphAtlas.GetInstance(UniText.RenderModee.MSDF).PageCount;
+            var sdfPages = GlyphAtlas.GetInstance(UniTextRenderMode.SDF).PageCount;
+            var msdfPages = GlyphAtlas.GetInstance(UniTextRenderMode.MSDF).PageCount;
             var emojiPages = GlyphAtlas.Emoji?.PageCount ?? 0;
 
             int tabCount = 0;
@@ -911,7 +917,7 @@ namespace LightSide
 
             if (previewTab == 0)
             {
-                var atlas = GlyphAtlas.GetInstance(UniText.RenderModee.SDF);
+                var atlas = GlyphAtlas.GetInstance(UniTextRenderMode.SDF);
                 if (atlas.AtlasTexture == null || atlas.PageCount == 0) return;
                 var idx = Mathf.Clamp(previewPageIndex, 0, atlas.PageCount - 1);
                 texture = atlas.AtlasTexture;
@@ -921,7 +927,7 @@ namespace LightSide
             }
             else if (previewTab == 1)
             {
-                var atlas = GlyphAtlas.GetInstance(UniText.RenderModee.MSDF);
+                var atlas = GlyphAtlas.GetInstance(UniTextRenderMode.MSDF);
                 if (atlas.AtlasTexture == null || atlas.PageCount == 0) return;
                 var idx = Mathf.Clamp(previewPageIndex, 0, atlas.PageCount - 1);
                 texture = atlas.AtlasTexture;

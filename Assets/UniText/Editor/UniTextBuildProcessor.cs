@@ -64,6 +64,7 @@ namespace LightSide
                 Cat.Meow($"[UniText] After disabling auto: APIs=[{string.Join(", ", graphicsAPIs)}]");
             }
 
+#if !UNITY_2023_1_OR_NEWER
             if (!graphicsAPIs.Contains(GraphicsDeviceType.OpenGLES2))
             {
                 Cat.Meow("[UniText] No WebGL 1.0 found, settings OK");
@@ -78,6 +79,7 @@ namespace LightSide
 
             Cat.Meow($"[UniText] Switching to WebGL 2.0: [{string.Join(", ", newAPIs)}]");
             PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL, newAPIs);
+#endif
         }
     }
 

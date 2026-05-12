@@ -41,14 +41,13 @@ namespace LightSide
             foreach (var rd in renderData)
             {
                 var copy = new Mesh();
-                copy.vertices = rd.mesh.vertices;
-                copy.triangles = rd.mesh.triangles;
-
-                tempUvBuffer.Clear();
-                rd.mesh.GetUVs(0, tempUvBuffer);
-                copy.SetUVs(0, tempUvBuffer);
-
-                copy.colors32 = rd.mesh.colors32;
+                if (rd.vertexCount > 0)
+                {
+                    copy.SetVertices(rd.vertices, rd.vertexOffset, rd.vertexCount);
+                    copy.SetUVs(0, rd.uvs0, rd.vertexOffset, rd.vertexCount);
+                    copy.SetColors(rd.colors, rd.vertexOffset, rd.vertexCount);
+                    copy.SetTriangles(rd.triangles, rd.triangleOffset, rd.triangleCount, 0);
+                }
                 testMeshSnapshots.Add(copy);
             }
 

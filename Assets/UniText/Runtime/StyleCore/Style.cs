@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace LightSide
@@ -25,9 +26,7 @@ namespace LightSide
     [Serializable]
     public sealed class Style
     {
-        /// <summary>The modifier instance to apply when the rule matches.</summary>
         [SerializeReference, TypeSelector] private BaseModifier modifier;
-        /// <summary>The parse rule that triggers this modifier.</summary>
         [SerializeReference, TypeSelector] private IParseRule rule;
 
         [NonSerialized] private UniTextBase owner;
@@ -50,8 +49,11 @@ namespace LightSide
         /// <summary>Gets the UniTextBase that owns this Style.</summary>
         public UniTextBase Owner => owner;
 
-        /// <summary>Returns true if both modifier and rule are assigned.</summary>
-        public bool IsValid => modifier != null && rule != null;
+        /// <summary>
+        /// Returns true if the style is ready for registration.
+        /// Requires a rule; modifier is required unless <see cref="IParseRule.IsStandalone"/> is true.
+        /// </summary>
+        public bool IsValid => rule != null && (modifier != null || rule.IsStandalone);
 
         /// <summary>Returns true if registered to a UniText.</summary>
         public bool IsRegistered => isRegistered;
@@ -76,16 +78,12 @@ namespace LightSide
             }
 
             owner = uniText;
-            modifier.SetOwner(uniText);
+            modifier?.SetOwner(uniText);
             parser.Register(rule, modifier);
             isRegistered = true;
             return true;
         }
 
-        /// <summary>
-        /// Unregisters this modifier from the AttributeParser and resets state.
-        /// </summary>
-        /// <param name="parser">The AttributeParser to unregister from.</param>
         internal void Unregister(AttributeParser parser)
         {
             if (!isRegistered) return;
@@ -95,9 +93,10 @@ namespace LightSide
                 modifier.Destroy();
             }
 
-            if (parser != null && modifier != null)
+            if (parser != null)
             {
-                parser.Unregister(modifier);
+                if (modifier != null) parser.Unregister(modifier);
+                else if (rule != null) parser.UnregisterRule(rule);
             }
 
             isRegistered = false;
@@ -145,7 +144,7 @@ namespace LightSide
 
                 if (wasInitialized)
                 {
-                    cachedOwner.SetDirty(UniTextBase.DirtyFlags.Text);
+                    cachedOwner.SetDirty(UniTextDirtyFlags.Text);
                 }
             }
         }
@@ -171,9 +170,78 @@ namespace LightSide
 
                 if (wasInitialized)
                 {
-                    cachedOwner.SetDirty(UniTextBase.DirtyFlags.Text);
+                    cachedOwner.SetDirty(UniTextDirtyFlags.Text);
                 }
             }
+        }
+
+        /// <summary>
+        /// Builds a style that applies <paramref name="modifier"/> to the entire text via a
+        /// whole-text <see cref="RangeRule"/>.
+        /// </summary>
+        /// <param name="modifier">The modifier to apply. Must not be null.</param>
+        /// <param name="parameter">Optional parameter forwarded to the modifier's <c>OnApply</c>.</param>
+        public static Style WholeText(BaseModifier modifier, string parameter = null)
+        {
+            if (modifier == null) throw new ArgumentNullException(nameof(modifier));
+
+            return new Style
+            {
+                Modifier = modifier,
+                Rule = new RangeRule
+                {
+                    data = new List<RangeRule.Data>
+                    {
+                        new() { range = RangeEx.WholeText, parameter = parameter }
+                    }
+                }
+            };
+        }
+
+        /// <summary>
+        /// Builds a style that applies <paramref name="modifier"/> to a fixed codepoint range
+        /// via a <see cref="RangeRule"/>.
+        /// </summary>
+        /// <param name="modifier">The modifier to apply. Must not be null.</param>
+        /// <param name="start">Inclusive start codepoint index.</param>
+        /// <param name="end">Exclusive end codepoint index.</param>
+        /// <param name="parameter">Optional parameter forwarded to the modifier's <c>OnApply</c>.</param>
+        public static Style Range(BaseModifier modifier, int start, int end, string parameter = null)
+        {
+            if (modifier == null) throw new ArgumentNullException(nameof(modifier));
+
+            return new Style
+            {
+                Modifier = modifier,
+                Rule = new RangeRule
+                {
+                    data = new List<RangeRule.Data>
+                    {
+                        new() { range = $"{start}..{end}", parameter = parameter }
+                    }
+                }
+            };
+        }
+
+        /// <summary>
+        /// Builds a style that activates <paramref name="modifier"/> on ranges matched by a
+        /// rich-text tag <c>&lt;tagName&gt;...&lt;/tagName&gt;</c>.
+        /// </summary>
+        /// <param name="modifier">The modifier to apply. Must not be null.</param>
+        /// <param name="tagName">Tag name without angle brackets (e.g. <c>"color"</c>, <c>"lang"</c>).</param>
+        /// <param name="defaultParameter">
+        /// Optional default parameter used when the tag is written without <c>=value</c>.
+        /// </param>
+        public static Style Tag(BaseModifier modifier, string tagName, string defaultParameter = null)
+        {
+            if (modifier == null) throw new ArgumentNullException(nameof(modifier));
+            if (string.IsNullOrEmpty(tagName)) throw new ArgumentException("tagName must be non-empty", nameof(tagName));
+
+            return new Style
+            {
+                Modifier = modifier,
+                Rule = new TagRule(tagName) { defaultParameter = defaultParameter }
+            };
         }
     }
 

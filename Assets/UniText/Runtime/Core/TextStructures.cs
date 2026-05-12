@@ -159,6 +159,9 @@ namespace LightSide
         /// <summary>The BiDi embedding level (odd = RTL, even = LTR).</summary>
         public byte bidiLevel;
 
+        /// <summary>Language registry index for the OpenType language tag applied during shaping. 0 = unset.</summary>
+        public byte language;
+
         /// <summary>The Unicode script of this run.</summary>
         public UnicodeScript script;
 
@@ -194,6 +197,9 @@ namespace LightSide
 
         /// <summary>The BiDi embedding level.</summary>
         public byte bidiLevel;
+
+        /// <summary>Language registry index for the OpenType language tag applied during shaping. 0 = unset.</summary>
+        public byte language;
 
         /// <summary>The font ID used for this run.</summary>
         public int fontId;
@@ -234,10 +240,19 @@ namespace LightSide
         /// <summary>Number of runs in this line.</summary>
         public int runCount;
 
-        /// <summary>Content width (excluding trailing whitespace).</summary>
+        /// <summary>Index of the first positioned glyph belonging to this line (set during layout).</summary>
+        public int glyphStart;
+
+        /// <summary>Number of positioned glyphs belonging to this line (set during layout).</summary>
+        public int glyphCount;
+
+        /// <summary>Content width in font units (excluding trailing whitespace).</summary>
         public float width;
 
-        /// <summary>Width of trailing whitespace that hangs outside the content box (CSS Text §4.1.3).</summary>
+        /// <summary>Content width in mesh-local pixels (<see cref="width"/> scaled by font size at layout time, set during layout).</summary>
+        public float widthPx;
+
+        /// <summary>Width of trailing whitespace that hangs outside the content box (CSS Text §4.1.3), in font units.</summary>
         public float trailingWhitespace;
 
         /// <summary>The base BiDi level of the paragraph containing this line.</summary>
@@ -245,6 +260,39 @@ namespace LightSide
 
         /// <summary>Left margin for this line (e.g., for list indentation).</summary>
         public float startMargin;
+
+        /// <summary>True when the line's paragraph base direction is right-to-left (UAX #9 odd embedding level).</summary>
+        public bool IsRtl => (paragraphBaseLevel & 1) != 0;
+    }
+
+
+    /// <summary>
+    /// A contiguous run of positioned glyphs within a single line whose clusters fall inside a queried range.
+    /// Bounds are in local mesh coordinates (relative to the text origin), with X clamped to the line's
+    /// visible content extent (trailing whitespace excluded per CSS Text §4.1.3 via <see cref="TextLine.width"/>).
+    /// </summary>
+    public struct LineRangeEntry
+    {
+        /// <summary>Index of the line in <c>buffers.lines</c>.</summary>
+        public int lineIdx;
+
+        /// <summary>Index of the first positioned glyph of this run (inclusive).</summary>
+        public int firstGlyphIdx;
+
+        /// <summary>Index of the last positioned glyph of this run (inclusive).</summary>
+        public int lastGlyphIdx;
+
+        /// <summary>Left edge of the run in local coordinates, clamped to line content extent.</summary>
+        public float minX;
+
+        /// <summary>Right edge of the run in local coordinates, clamped to line content extent.</summary>
+        public float maxX;
+
+        /// <summary>Top edge of the run in local coordinates (uses ascender of glyphs on the line).</summary>
+        public float minY;
+
+        /// <summary>Bottom edge of the run in local coordinates (uses descender of glyphs on the line).</summary>
+        public float maxY;
     }
 
 
@@ -289,39 +337,17 @@ namespace LightSide
     }
 
 
-    /// <summary>
-    /// Cached glyph rendering data for efficient mesh generation.
-    /// </summary>
     internal struct CachedGlyphData
     {
-        /// <summary>X position in the font atlas texture.</summary>
         public int rectX;
-
-        /// <summary>Y position in the font atlas texture.</summary>
         public int rectY;
-
-        /// <summary>Width in the font atlas texture.</summary>
         public int rectWidth;
-
-        /// <summary>Height in the font atlas texture.</summary>
         public int rectHeight;
-
-        /// <summary>Horizontal bearing (offset from origin to left edge).</summary>
         public float bearingX;
-
-        /// <summary>Vertical bearing (offset from baseline to top edge).</summary>
         public float bearingY;
-
-        /// <summary>Glyph width in pixels.</summary>
         public float width;
-
-        /// <summary>Glyph height in pixels.</summary>
         public float height;
-
-        /// <summary>Atlas page index (for Texture2DArray layer selection).</summary>
         public int atlasIndex;
-
-        /// <summary>Indicates whether this cache entry contains valid data.</summary>
         public bool isValid;
     }
 

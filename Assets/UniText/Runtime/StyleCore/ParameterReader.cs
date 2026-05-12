@@ -16,7 +16,7 @@ namespace LightSide
     /// reader.NextColor(out var color);
     /// </code>
     /// </example>
-    ref struct ParameterReader
+    public ref struct ParameterReader
     {
         private ReadOnlySpan<char> remaining;
 

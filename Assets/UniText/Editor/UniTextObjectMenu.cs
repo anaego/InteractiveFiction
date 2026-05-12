@@ -1,4 +1,5 @@
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -7,7 +8,7 @@ namespace LightSide
 {
     internal static class UniTextObjectMenu
     {
-        [MenuItem("GameObject/UI/UniText - Text", false, 2001)]
+        [MenuItem("GameObject/UI (Canvas)/UniText/Text", false, 2001)]
         private static void CreateText(MenuCommand menuCommand)
         {
             var prefab = UniTextSettings.TextPrefab;
@@ -31,7 +32,7 @@ namespace LightSide
             Selection.activeGameObject = textGo;
         }
 
-        [MenuItem("GameObject/UI/UniText - Button", false, 2002)]
+        [MenuItem("GameObject/UI (Canvas)/UniText/Button", false, 2002)]
         private static void CreateButton(MenuCommand menuCommand)
         {
             var prefab = UniTextSettings.ButtonPrefab;
@@ -79,9 +80,44 @@ namespace LightSide
             Selection.activeGameObject = buttonGo;
         }
 
+        [MenuItem("GameObject/UI (World)/UniText/World Text", false, 2003)]
+        private static void CreateWorldText(MenuCommand menuCommand)
+        {
+            var prefab = UniTextSettings.WorldTextPrefab;
+            if (prefab != null)
+            {
+                var go = Object.Instantiate(prefab);
+                go.name = prefab.name;
+                PlaceInWorld(go, menuCommand);
+                return;
+            }
+
+            var worldGo = new GameObject("World Text (UniText)");
+            var rt = worldGo.AddComponent<RectTransform>();
+            rt.sizeDelta = new Vector2(220f, 50f);
+            rt.localScale = Vector3.one * 0.01f;
+
+            var uniText = worldGo.AddComponent<UniTextWorld>();
+            SetDefaults(uniText, "Hello cats\ud83c\udf0d", HorizontalAlignment.Center, VerticalAlignment.Middle);
+
+            PlaceInWorld(worldGo, menuCommand);
+
+            Undo.RegisterCreatedObjectUndo(worldGo, "Create UniText - World Text");
+            Selection.activeGameObject = worldGo;
+        }
+
+        private static void PlaceInWorld(GameObject go, MenuCommand menuCommand)
+        {
+            var parent = ResolveParent(menuCommand);
+            if (parent != null)
+                GameObjectUtility.SetParentAndAlign(go, parent);
+            else
+                StageUtility.PlaceGameObjectInCurrentStage(go);
+        }
+
         private static GameObject CreateUIObject(string name, MenuCommand menuCommand)
         {
-            var parent = menuCommand.context as GameObject;
+            var parent = ResolveParent(menuCommand);
             var canvas = FindOrCreateCanvas(parent);
 
             var go = new GameObject(name, typeof(RectTransform));
@@ -96,7 +132,7 @@ namespace LightSide
 
         private static void Place(GameObject go, MenuCommand menuCommand)
         {
-            var parent = menuCommand.context as GameObject;
+            var parent = ResolveParent(menuCommand);
             var canvas = FindOrCreateCanvas(parent);
 
             if (parent != null && parent.GetComponentInParent<Canvas>() != null)
@@ -110,13 +146,29 @@ namespace LightSide
             Selection.activeGameObject = go;
         }
 
+        private static GameObject ResolveParent(MenuCommand menuCommand)
+        {
+            if (menuCommand.context is GameObject ctx)
+                return ctx;
+
+            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            return prefabStage != null ? prefabStage.prefabContentsRoot : null;
+        }
+
         private static Canvas FindOrCreateCanvas(GameObject parent)
         {
             var canvas = parent != null ? parent.GetComponentInParent<Canvas>() : null;
             if (canvas != null) return canvas;
 
-            canvas = Object.FindObjectOfType<Canvas>();
-            if (canvas != null) return canvas;
+            var stageHandle = parent != null
+                ? StageUtility.GetStageHandle(parent)
+                : StageUtility.GetCurrentStageHandle();
+
+            foreach (var c in stageHandle.FindComponentsOfType<Canvas>())
+            {
+                if (c.gameObject.activeInHierarchy)
+                    return c;
+            }
 
             var canvasGo = new GameObject("Canvas");
             canvas = canvasGo.AddComponent<Canvas>();
@@ -124,9 +176,15 @@ namespace LightSide
             canvasGo.AddComponent<CanvasScaler>();
             canvasGo.AddComponent<GraphicRaycaster>();
             canvasGo.layer = LayerMask.NameToLayer("UI");
+
+            StageUtility.PlaceGameObjectInCurrentStage(canvasGo);
+            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            if (prefabStage != null)
+                GameObjectUtility.SetParentAndAlign(canvasGo, prefabStage.prefabContentsRoot);
+
             Undo.RegisterCreatedObjectUndo(canvasGo, "Create Canvas");
 
-            if (Object.FindObjectOfType<EventSystem>() == null)
+            if (prefabStage == null && stageHandle.FindComponentOfType<EventSystem>() == null)
             {
                 var eventGo = new GameObject("EventSystem");
                 eventGo.AddComponent<EventSystem>();
@@ -147,7 +205,7 @@ namespace LightSide
             return canvas;
         }
 
-        private static void SetDefaults(UniText uniText, string text,
+        private static void SetDefaults(UniTextBase uniText, string text,
             HorizontalAlignment h = HorizontalAlignment.Left,
             VerticalAlignment v = VerticalAlignment.Top)
         {

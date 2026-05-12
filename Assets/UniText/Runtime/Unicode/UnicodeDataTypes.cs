@@ -96,10 +96,12 @@ namespace LightSide
     /// Unicode General Category property values.
     /// </summary>
     /// <remarks>
-    /// Each codepoint belongs to exactly one general category. Categories are used
-    /// for character classification in various algorithms including line breaking.
+    /// Each codepoint belongs to exactly one general category. Use with
+    /// <see cref="UnicodeData.GetGeneralCategory(int)"/> for character classification —
+    /// for example to apply a modifier only to letters, only to punctuation, or to skip
+    /// combining marks. Values follow the Unicode Character Database short aliases.
     /// </remarks>
-    internal enum GeneralCategory : byte
+    public enum GeneralCategory : byte
     {
         /// <summary>Letter, Uppercase</summary>
         Lu,

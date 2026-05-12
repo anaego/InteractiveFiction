@@ -1,6 +1,6 @@
 fileFormatVersion: 2
-guid: 6194ba5d5fd7d3a4dad0e98490db58e6
-DefaultImporter:
+guid: fa1e7a28d1298384999a35efb40eeae0
+ShaderIncludeImporter:
   externalObjects: {}
   userData: 
   assetBundleName: 
@@ -9,6 +9,6 @@ AssetOrigin:
   serializedVersion: 1
   productId: 357844
   packageName: UniText
-  packageVersion: 2.0.0
-  assetPath: Assets/UniText/tools~/UniTextDocGen/UniTextDocGen.csproj
-  uploadId: 895842
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Shaders/UniText_SDF-CommonURP.hlsl
+  uploadId: 908872

@@ -15,6 +15,7 @@ namespace LightSide
     {
         private static Material sdfUnified;
         private static Material msdfUnified;
+        private static Material highlight;
 
         private static bool subscribedToSdfAtlas;
         private static bool subscribedToMsdfAtlas;
@@ -31,6 +32,12 @@ namespace LightSide
         public static Material Msdf => msdfUnified ??= CreateAndSync(
             CreateUnifiedMaterial(true),
             currentMsdfAtlas);
+
+        /// <summary>
+        /// Shared flat-color transparent material for world-space range highlights.
+        /// Color is supplied per-vertex; one material serves all highlight instances.
+        /// </summary>
+        public static Material Highlight => highlight ??= CreateHighlightMaterial();
 
         /// <summary>
         /// Sets _MainTex on all SDF materials to the given atlas texture.
@@ -59,20 +66,17 @@ namespace LightSide
         {
             if (subscribedToSdfAtlas) return;
             subscribedToSdfAtlas = true;
-            var atlas = GlyphAtlas.GetInstance(UniTextBase.RenderModee.SDF);
+            var atlas = GlyphAtlas.GetInstance(UniTextRenderMode.SDF);
             atlas.AtlasTextureChanged += SetSdfAtlasTexture;
             if (atlas.AtlasTexture != null)
                 SetSdfAtlasTexture(atlas.AtlasTexture);
         }
 
-        /// <summary>
-        /// Ensures subscription to MSDF atlas texture change events.
-        /// </summary>
         internal static void EnsureMsdfAtlasSubscription()
         {
             if (subscribedToMsdfAtlas) return;
             subscribedToMsdfAtlas = true;
-            var atlas = GlyphAtlas.GetInstance(UniTextBase.RenderModee.MSDF);
+            var atlas = GlyphAtlas.GetInstance(UniTextRenderMode.MSDF);
             atlas.AtlasTextureChanged += SetMsdfAtlasTexture;
             if (atlas.AtlasTexture != null)
                 SetMsdfAtlasTexture(atlas.AtlasTexture);
@@ -102,6 +106,17 @@ namespace LightSide
             var mat = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
             if (msdf) mat.EnableKeyword("UNITEXT_MSDF");
             return mat;
+        }
+
+        private static Material CreateHighlightMaterial()
+        {
+            var shader = UniTextSettings.GetShader(UniTextSettings.ShaderHighlight);
+            if (shader == null)
+            {
+                Cat.MeowWarn("[UniTextMaterialCache] Highlight shader not found in UniTextSettings");
+                return null;
+            }
+            return new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
         }
     }
 }

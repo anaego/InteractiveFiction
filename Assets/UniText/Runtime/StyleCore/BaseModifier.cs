@@ -27,7 +27,6 @@ namespace LightSide
     {
         /// <summary>Reference to the UniText component this modifier is attached to.</summary>
         [NonSerialized] public UniTextBase uniText;
-        /// <summary>Access to text processing buffers.</summary>
         [NonSerialized] protected UniTextBuffers buffers;
 
         [NonSerialized] private bool isInitialized;

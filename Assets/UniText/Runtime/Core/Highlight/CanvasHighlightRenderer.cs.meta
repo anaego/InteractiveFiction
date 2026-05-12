@@ -1,0 +1,9 @@
+fileFormatVersion: 2
+guid: 69df8e884bb3ee94a896f95b09691579
+AssetOrigin:
+  serializedVersion: 1
+  productId: 357844
+  packageName: UniText
+  packageVersion: 2.1.5
+  assetPath: Assets/UniText/Runtime/Core/Highlight/CanvasHighlightRenderer.cs
+  uploadId: 908872
